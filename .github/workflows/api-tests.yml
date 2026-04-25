@@ -1,0 +1,91 @@
+name: API Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pytest_args:
+        description: "Pytest arguments"
+        required: false
+        default: "-m smoke"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ secrets.BASE_URL != '' && secrets.BASE_URL || 'https://testapi.intercars.ru/api/v1' }}
+      PYTEST_ARGS: ${{ inputs.pytest_args || '-m smoke' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker build -t simple-api-tests .
+
+      - name: Run tests in Docker
+        run: |
+          mkdir -p allure-results
+          docker run --rm \
+            -e BASE_URL="$BASE_URL" \
+            -v "$PWD/allure-results:/app/allure-results" \
+            simple-api-tests \
+            pytest $PYTEST_ARGS --alluredir=allure-results --clean-alluredir
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results
+          if-no-files-found: warn
+
+      - name: Setup Node.js for Allure
+        if: always()
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Generate Allure HTML report
+        if: always()
+        run: npx allure generate allure-results -o allure-report --clean
+
+      - name: Upload Allure report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+          if-no-files-found: warn
+
+      - name: Configure GitHub Pages
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: allure-report
+
+  deploy-pages:
+    if: always() && github.event_name != 'pull_request'
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
