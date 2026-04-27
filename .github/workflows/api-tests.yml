@@ -53,9 +53,16 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Setup Java for Allure
+        if: always()
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Generate Allure HTML report
         if: always()
-        run: npx allure generate allure-results -o allure-report --clean
+        run: npx --yes allure-commandline generate allure-results -o allure-report --clean
 
       - name: Upload Allure report artifact
         if: always()
