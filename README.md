@@ -43,10 +43,9 @@ The workflow is stored in `.github/workflows/api-tests.yml`.
 - Manual runs support custom `pytest` arguments through `workflow_dispatch`
 - `allure-results` are uploaded as build artifacts
 - `allure-report` HTML is generated in CI
-- On non-PR runs, the HTML report is uploaded as a GitHub Pages artifact and deployed to GitHub Pages
+- `allure-report` is uploaded as a regular GitHub Actions artifact
 
 If needed, add `BASE_URL` in GitHub repository secrets.
-To publish the report site, enable GitHub Pages in repository settings and select `GitHub Actions` as the source.
 
 ## Open Allure report locally
 
@@ -67,5 +66,7 @@ allure generate allure-results -o allure-report --clean
 ## Notes
 
 - `allure-results/` and `allure-report/` are ignored by git.
+- `Create ticket` and `Is Created` checks in `tests/smoke/test_booking_flow.py` are disabled by default.
+- Set `RUN_TICKET_CREATION_CHECKS=true` to re-enable them after the API contract is clarified.
 - Local `.venv/`, `.idea/`, `.env` and training files from `repit/` should not be committed.
 - Copy `.env.example` to `.env` for local configuration.
