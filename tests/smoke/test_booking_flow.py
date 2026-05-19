@@ -1,7 +1,6 @@
 import allure
 import pytest
 import json
-import os
 
 from models.booking_flow import (
     BookingResponse,
@@ -17,9 +16,7 @@ from tests.builders.alphabank import build_status_payload, build_validation_payl
 from models.routes_search import RoutesSearchResponse
 from tests.builders.booking import build_booking_payload
 from utils.constants import EXPECTED_CURRENCIES, EXPECTED_TARIFF_NAMES, LANG_RUS, MINSK, MOSCOW
-
-
-RUN_TICKET_CREATION_CHECKS = os.getenv("RUN_TICKET_CREATION_CHECKS", "false").lower() == "true"
+from config.settings import RUN_TICKET_CREATION_CHECKS
 
 
 @allure.feature("Booking API")

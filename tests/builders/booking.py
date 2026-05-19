@@ -1,11 +1,11 @@
 import random
-import string
+import uuid
 
 from utils.constants import LANG_RUS
 
 
-def _random_suffix(length: int = 8) -> str:
-    return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
+def _random_suffix() -> str:
+    return uuid.uuid4().hex[:8]
 
 
 def build_booking_payload(route_id: int | str, search_id: int | str, place_number: int, tariff_id: int | None) -> dict:

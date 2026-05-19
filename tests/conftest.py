@@ -13,6 +13,8 @@ from api.routes import RoutesClient
 from api.tickets import TicketsClient
 from config.settings import BASE_URL
 from models.routes_search import RoutesSearchResponse
+from utils.constants import MINSK, MOSCOW
+
 
 @pytest.fixture
 def routes_client():
@@ -27,11 +29,6 @@ def tickets_client():
 @pytest.fixture
 def alphabank_client():
     return AlphaBankClient(base_url=BASE_URL)
-
-
-
-MINSK = 1
-MOSCOW = 3
 
 
 def get_valid_date(routes_client, city_departure, city_arrival, days_ahead=5):
