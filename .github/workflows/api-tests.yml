@@ -20,7 +20,7 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: ${{ secrets.BASE_URL != '' && secrets.BASE_URL || 'https://testapi.intercars.ru/api/v1' }}
+      BASE_URL: ${{ secrets.BASE_URL }}
       PYTEST_ARGS: ${{ inputs.pytest_args || '-m smoke' }}
 
     steps:

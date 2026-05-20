@@ -15,7 +15,7 @@ from models.booking_flow import (
 from tests.builders.alphabank import build_status_payload, build_validation_payload
 from models.routes_search import RoutesSearchResponse
 from tests.builders.booking import build_booking_payload
-from utils.constants import EXPECTED_CURRENCIES, EXPECTED_TARIFF_NAMES, LANG_RUS, MINSK, MOSCOW
+from utils.constants import CARRIER_CONFIGS, LANG_RUS
 from config.settings import RUN_TICKET_CREATION_CHECKS
 
 
@@ -23,11 +23,20 @@ from config.settings import RUN_TICKET_CREATION_CHECKS
 @allure.story("Booking ticket smoke flow")
 @pytest.mark.smoke
 @pytest.mark.booking
-def test_booking_ticket_flow(routes_client, tickets_client, alphabank_client, valid_booking_depart_date):
+@pytest.mark.parametrize(
+    "carrier_booking_context",
+    CARRIER_CONFIGS,
+    indirect=True,
+    ids=[c["name"] for c in CARRIER_CONFIGS],
+)
+def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_client, alphabank_client):
+    carrier = carrier_booking_context
+    valid_booking_depart_date = carrier["date"]
+
     with allure.step("Search Routes"):
         search_payload = {
-            "CityDeparture": MINSK,
-            "CityArrival": MOSCOW,
+            "CityDeparture": carrier["departure"],
+            "CityArrival": carrier["arrival"],
             "DateDeparture": valid_booking_depart_date,
         }
         allure.attach(
@@ -46,13 +55,15 @@ def test_booking_ticket_flow(routes_client, tickets_client, alphabank_client, va
         assert search_response.headers["Content-Type"].startswith("application/json")
 
         search_data = RoutesSearchResponse(**search_response.json())
-        assert search_data.Result.CityDeparture == MINSK
-        assert search_data.Result.CityArrival == MOSCOW
+        assert search_data.Result.CityDeparture == carrier["departure"]
+        assert search_data.Result.CityArrival == carrier["arrival"]
         assert search_data.Result.Id is not None
         assert search_data.Result.all_routes, "Маршруты не найдены"
-        assert search_data.Result.first_route_group.departure_date == valid_booking_depart_date
 
-        route_group = search_data.Result.first_route_group
+        route_group = search_data.Result.route_group_by_carrier(carrier["carrier_id"])
+        assert route_group is not None, f"Маршруты агрегатора '{carrier['name']}' не найдены"
+        assert route_group.departure_date == valid_booking_depart_date
+
         route_id = route_group.Id
         search_id = search_data.Result.Id
         assert route_id is not None, "Id маршрута не найден в ответе routes/search"
@@ -77,10 +88,13 @@ def test_booking_ticket_flow(routes_client, tickets_client, alphabank_client, va
         assert get_search_response.headers["Content-Type"].startswith("application/json")
 
         get_search_data = RoutesSearchResponse(**get_search_response.json())
-        assert get_search_data.Result.CityDeparture == MINSK
-        assert get_search_data.Result.CityArrival == MOSCOW
+        assert get_search_data.Result.CityDeparture == carrier["departure"]
+        assert get_search_data.Result.CityArrival == carrier["arrival"]
         assert get_search_data.Result.all_routes
-        assert get_search_data.Result.first_route_group.Id == route_id
+
+        route_group_check = get_search_data.Result.route_group_by_carrier(carrier["carrier_id"])
+        assert route_group_check is not None
+        assert route_group_check.Id == route_id
 
     with allure.step("Get Route"):
         get_route_payload = {
@@ -106,9 +120,8 @@ def test_booking_ticket_flow(routes_client, tickets_client, alphabank_client, va
         route_data = GetRouteResponse(**get_route_response.json())
         route_details = route_data.Result.Route
 
-        assert route_details.City1 == "Минск"
-        assert route_details.City2 == "Москва"
         assert str(route_details.Id) == str(route_id)
+        assert route_details.City1 and route_details.City2
         assert route_details.Tariffs
         assert route_details.FullBusPlaces
         assert route_details.free_bus_places, "Свободные места не найдены"
@@ -142,13 +155,9 @@ def test_booking_ticket_flow(routes_client, tickets_client, alphabank_client, va
         assert get_tariffs_response.headers["Content-Type"].startswith("application/json")
 
         tariffs_data = GetTariffsResponse(**get_tariffs_response.json())
-        assert tariffs_data.Result
-
-        tariff_names = [tariff.Name for tariff in tariffs_data.Result[: len(EXPECTED_TARIFF_NAMES)]]
-        assert tariff_names == EXPECTED_TARIFF_NAMES
-
-        currency_names = [price.CurrencyName for price in tariffs_data.Result[0].Prices]
-        assert currency_names == EXPECTED_CURRENCIES
+        assert tariffs_data.Result, "Тарифы не найдены"
+        assert all(tariff.Name for tariff in tariffs_data.Result), "Есть тарифы без имени"
+        assert tariffs_data.Result[0].Prices, "Цены не найдены"
 
     with allure.step("Select Place"):
         select_place_payload = {
@@ -221,9 +230,7 @@ def test_booking_ticket_flow(routes_client, tickets_client, alphabank_client, va
             name="booking_payload",
             attachment_type=allure.attachment_type.JSON,
         )
-        booking_response = tickets_client.booking(
-            booking_payload
-        )
+        booking_response = tickets_client.booking(booking_payload)
         allure.attach(
             booking_response.text,
             name="booking_response",

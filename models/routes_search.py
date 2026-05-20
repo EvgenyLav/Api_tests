@@ -24,6 +24,8 @@ class RouteGroup(BaseModel):
 
 
 class CarrierRoute(BaseModel):
+    CarrierId: int | None = None
+    IsActive: bool | None = None
     Routes: List[RouteGroup] = Field(default_factory=list)
 
 
@@ -47,6 +49,12 @@ class SearchResult(BaseModel):
             if carrier.Routes:
                 return carrier.Routes[0]
         raise ValueError("No route groups found")
+
+    def route_group_by_carrier(self, carrier_id: int) -> RouteGroup | None:
+        for carrier in self.CarrierRoutes:
+            if carrier.CarrierId == carrier_id and carrier.Routes:
+                return carrier.Routes[0]
+        return None
 
     @property
     def has_routes(self) -> bool:

@@ -10,3 +10,7 @@ EXPECTED_TARIFF_NAMES = [
 ]
 
 EXPECTED_CURRENCIES = ["BYN", "EUR", "RUB"]
+
+CARRIER_CONFIGS = [
+    {"name": "intercars", "departure": MINSK, "arrival": MOSCOW, "carrier_id": 1},
+]
