@@ -71,6 +71,8 @@ jobs:
       - name: Configure Pages
         if: always()
         uses: actions/configure-pages@v4
+        with:
+          enablement: true
 
       - name: Upload report to Pages
         if: always()
