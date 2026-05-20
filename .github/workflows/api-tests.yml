@@ -14,7 +14,7 @@ on:
         default: "-m smoke"
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -71,8 +71,6 @@ jobs:
       - name: Configure Pages
         if: always()
         uses: actions/configure-pages@v4
-        with:
-          enablement: true
 
       - name: Upload report to Pages
         if: always()
