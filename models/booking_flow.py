@@ -114,7 +114,7 @@ class BookingResult(BaseModel):
 
 
 class BookingResponse(BaseModel):
-    Result: BookingResult
+    Result: BookingResult | None = None
     Error: ApiError | None = None
 
 
