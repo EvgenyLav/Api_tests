@@ -16,7 +16,6 @@ from tests.builders.alphabank import build_status_payload, build_validation_payl
 from models.routes_search import RoutesSearchResponse
 from tests.builders.booking import build_booking_payload
 from utils.constants import CARRIER_CONFIGS, LANG_RUS
-from config.settings import RUN_TICKET_CREATION_CHECKS
 
 
 @allure.feature("Booking API")
@@ -291,51 +290,43 @@ def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_cli
         assert status_data.Result.Status == "0: Заказ зарегистрирован, но не оплачен"
         assert status_data.Error is None
 
-    if RUN_TICKET_CREATION_CHECKS:
-        with allure.step("Create ticket"):
-            allure.attach(
-                json.dumps(validation_payload, ensure_ascii=False, indent=2),
-                name="create_ticket_payload",
-                attachment_type=allure.attachment_type.JSON,
-            )
-            create_ticket_response = alphabank_client.create_ticket(validation_payload)
-            allure.attach(
-                create_ticket_response.text,
-                name="create_ticket_response",
-                attachment_type=allure.attachment_type.JSON,
-            )
+    with allure.step("Create ticket"):
+        allure.attach(
+            json.dumps(validation_payload, ensure_ascii=False, indent=2),
+            name="create_ticket_payload",
+            attachment_type=allure.attachment_type.JSON,
+        )
+        create_ticket_response = alphabank_client.create_ticket(validation_payload)
+        allure.attach(
+            create_ticket_response.text,
+            name="create_ticket_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
 
-            assert create_ticket_response.status_code in range(200, 300)
-            assert create_ticket_response.headers["Content-Type"].startswith("application/json")
+        assert create_ticket_response.status_code in range(200, 300)
+        assert create_ticket_response.headers["Content-Type"].startswith("application/json")
 
-            create_ticket_data = CreateTicketResponse(**create_ticket_response.json())
-            assert create_ticket_data.Result.Success is True
-            assert create_ticket_data.Result.Data is True
-            assert create_ticket_data.Error is None
+        create_ticket_data = CreateTicketResponse(**create_ticket_response.json())
+        assert create_ticket_data.Result.Success is True
+        assert create_ticket_data.Result.Data is True
+        assert create_ticket_data.Error is None
 
-        with allure.step("Is Created"):
-            allure.attach(
-                json.dumps(validation_payload, ensure_ascii=False, indent=2),
-                name="is_created_payload",
-                attachment_type=allure.attachment_type.JSON,
-            )
-            is_created_response = alphabank_client.is_created(validation_payload)
-            allure.attach(
-                is_created_response.text,
-                name="is_created_response",
-                attachment_type=allure.attachment_type.JSON,
-            )
+    with allure.step("Is Created"):
+        allure.attach(
+            json.dumps(validation_payload, ensure_ascii=False, indent=2),
+            name="is_created_payload",
+            attachment_type=allure.attachment_type.JSON,
+        )
+        is_created_response = alphabank_client.is_created(validation_payload)
+        allure.attach(
+            is_created_response.text,
+            name="is_created_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
 
-            assert is_created_response.status_code in range(200, 300)
-            assert is_created_response.headers["Content-Type"].startswith("application/json")
+        assert is_created_response.status_code in range(200, 300)
+        assert is_created_response.headers["Content-Type"].startswith("application/json")
 
-            is_created_data = IsCreatedResponse(**is_created_response.json())
-            assert is_created_data.Error is None
-            assert is_created_data.Result is not None
-    else:
-        with allure.step("Create ticket checks skipped"):
-            allure.attach(
-                "Set RUN_TICKET_CREATION_CHECKS=true to re-enable create ticket and is_created checks.",
-                name="ticket_creation_checks_status",
-                attachment_type=allure.attachment_type.TEXT,
-            )
+        is_created_data = IsCreatedResponse(**is_created_response.json())
+        assert is_created_data.Error is None
+        assert is_created_data.Result is not None
