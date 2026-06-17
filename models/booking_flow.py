@@ -131,6 +131,9 @@ class PaymentStatusResponse(BaseModel):
 class CreateTicketResult(BaseModel):
     Success: bool
     Data: bool
+    Error: str | None = None
+    ExtraData: str | None = None
+    ErrorType: int | None = None
 
 
 class CreateTicketResponse(BaseModel):

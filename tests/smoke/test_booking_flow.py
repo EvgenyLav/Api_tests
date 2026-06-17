@@ -260,9 +260,12 @@ def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_cli
         assert booking_data.Result.md_order is not None
         allure.attach(booking_data.Result.md_order, name="md_order", attachment_type=allure.attachment_type.TEXT)
 
-        if booking_data.Result.result and booking_data.Result.result.Data:
-            assert booking_data.Result.result.Data.OrderId is not None
-            assert booking_data.Result.result.Data.TicketsNumber is not None
+        assert booking_data.Result.result is not None
+        assert booking_data.Result.result.Data is not None
+        assert booking_data.Result.result.Data.OrderId is not None
+        assert booking_data.Result.result.Data.TicketsNumber is not None
+        ticket_number = booking_data.Result.result.Data.TicketsNumber
+        allure.attach(str(ticket_number), name="ticket_number", attachment_type=allure.attachment_type.TEXT)
 
     status_payload = build_status_payload(booking_data.Result.md_order)
     validation_payload = build_validation_payload(booking_data.Result.md_order)
