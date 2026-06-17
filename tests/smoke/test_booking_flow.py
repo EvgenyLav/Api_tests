@@ -218,6 +218,20 @@ def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_cli
         assert remove_place_data.Result is True
         assert remove_place_data.Error is None
 
+    with allure.step("Re-select Place"):
+        reselect_response = tickets_client.select_place(select_place_payload)
+        allure.attach(
+            reselect_response.text,
+            name="reselect_place_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert reselect_response.status_code in range(200, 300)
+        assert reselect_response.headers["Content-Type"].startswith("application/json")
+
+        reselect_data = SelectPlaceResponse(**reselect_response.json())
+        assert reselect_data.Result.Success is True
+
     with allure.step("Booking Ticket"):
         booking_payload = build_booking_payload(
             route_id=route_id,
