@@ -1,41 +1,37 @@
-import random
-import uuid
+from faker import Faker
 
 from utils.constants import LANG_RUS
 
-
-def _random_suffix() -> str:
-    return uuid.uuid4().hex[:8]
+fake = Faker("ru_RU")
 
 
 def build_booking_payload(route_id: int | str, search_id: int | str, place_number: int, tariff_id: int | None) -> dict:
-    suffix = _random_suffix()
     passenger_tariff_id = tariff_id if tariff_id is not None else 3
 
     return {
         "Passengers": [
             {
-                "FirstName": f"Test{suffix}",
-                "LastName": f"User{suffix}",
-                "MiddleName": "Petrovich",
+                "FirstName": fake.first_name_male(),
+                "LastName": fake.last_name_male(),
+                "MiddleName": fake.middle_name_male(),
                 "Citizenship": "BY",
-                "Birthdate": "1993-11-21",
+                "Birthdate": fake.date_of_birth(minimum_age=18, maximum_age=70).strftime("%Y-%m-%d"),
                 "Gender": "M",
                 "DocumentId": "1",
-                "DocumentNumber": f"12{random.randint(100000000, 999999999)}",
+                "DocumentNumber": f"12{fake.numerify('#########')}",
                 "HasBonus": False,
                 "TarifId": passenger_tariff_id,
                 "PlaceNumber": place_number,
             }
         ],
-        "Phone": f"+37529{random.randint(1000000, 9999999)}",
-        "PhoneTwo": f"+37533{random.randint(1000000, 9999999)}",
-        "Email": f"qa_{suffix}@example.com",
+        "Phone": fake.numerify("+37529#######"),
+        "PhoneTwo": fake.numerify("+37533#######"),
+        "Email": fake.ascii_free_email(),
         "CurrencyId": 4,
         "PaySystem": "alphabank",
         "ExtraBaggage": 0,
         "PromoCode": "",
-        "Note": f"autotest-{suffix}",
+        "Note": f"autotest-{fake.uuid4()[:8]}",
         "SiteVersionId": 2,
         "HasSubscription": False,
         "UserId": None,
