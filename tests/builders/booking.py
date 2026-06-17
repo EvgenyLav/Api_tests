@@ -5,7 +5,13 @@ from utils.constants import LANG_RUS
 fake = Faker("ru_RU")
 
 
-def build_booking_payload(route_id: int | str, search_id: int | str, place_number: int, tariff_id: int | None) -> dict:
+def build_booking_payload(
+    route_id: int | str,
+    search_id: int | str,
+    place_number: int,
+    tariff_id: int | None,
+    user_id: str | None = None,
+) -> dict:
     passenger_tariff_id = tariff_id if tariff_id is not None else 3
 
     return {
@@ -34,7 +40,7 @@ def build_booking_payload(route_id: int | str, search_id: int | str, place_numbe
         "Note": f"autotest-{fake.uuid4()[:8]}",
         "SiteVersionId": 2,
         "HasSubscription": False,
-        "UserId": None,
+        "UserId": user_id,
         "RouteId": str(route_id),
         "SearchId": str(search_id),
         "Lang": LANG_RUS,

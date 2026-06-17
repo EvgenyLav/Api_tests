@@ -14,9 +14,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from api.alphabank import AlphaBankClient
+from api.auth import AuthClient
 from api.routes import RoutesClient
 from api.tickets import TicketsClient
-from config.settings import BASE_URL
+from config.settings import BASE_URL, ROOT_URL, USER_LOGIN, USER_PASSWORD
+from models.user_booking import TokenResponse
 from models.booking_flow import GetRouteResponse
 from models.routes_search import RoutesSearchResponse
 from utils.constants import MINSK, MOSCOW, CARRIER_CONFIGS, LANG_RUS
@@ -35,6 +37,19 @@ def tickets_client():
 @pytest.fixture
 def alphabank_client():
     return AlphaBankClient(base_url=BASE_URL)
+
+
+@pytest.fixture(scope="session")
+def token_data():
+    client = AuthClient(base_url=ROOT_URL)
+    return TokenResponse(**client.get_token(USER_LOGIN, USER_PASSWORD))
+
+
+@pytest.fixture(scope="session")
+def user_tickets_client(token_data):
+    client = TicketsClient(base_url=BASE_URL)
+    client.session.headers.update({"Authorization": f"Bearer {token_data.access_token}"})
+    return client
 
 
 def get_valid_date(routes_client, city_departure, city_arrival, carrier_id=None, days_ahead=5):
