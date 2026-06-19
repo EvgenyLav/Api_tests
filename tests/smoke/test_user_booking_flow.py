@@ -8,6 +8,7 @@ from models.user_booking import (
     UserBookingResponse,
     TicketsListResponse,
     TicketDetailsResponse,
+    TicketExistsResponse,
 )
 from tests.builders.booking import build_booking_payload
 from utils.constants import CARRIER_CONFIGS, LANG_RUS
@@ -164,6 +165,23 @@ def test_user_booking_flow(
         allure.attach(str(order_id), name="order_id", attachment_type=allure.attachment_type.TEXT)
         allure.attach(str(ticket_numbers), name="ticket_numbers", attachment_type=allure.attachment_type.TEXT)
 
+    with allure.step("Ticket Exists"):
+        for tn in ticket_number_list:
+            exists_payload = {"Number": tn, "Lang": LANG_RUS}
+            exists_response = user_tickets_client.ticket_exists(exists_payload)
+            allure.attach(
+                exists_response.text,
+                name=f"ticket_exists_response_{tn}",
+                attachment_type=allure.attachment_type.JSON,
+            )
+
+            assert exists_response.status_code in range(200, 300)
+            assert exists_response.headers["Content-Type"].startswith("application/json")
+
+            exists_data = TicketExistsResponse(**exists_response.json())
+            assert exists_data.Error is None
+            assert exists_data.Result is True, f"Билет {tn} не найден в системе"
+
     with allure.step("Get Tickets"):
         get_tickets_payload = {
             "Page": 1,
@@ -242,8 +260,24 @@ def test_user_booking_flow(
         assert details_data.Result is not None
 
         d = details_data.Result
+        passenger = booking_payload["Passengers"][0]
+
         assert d.TicketNumber == first_ticket.TicketNumber, "TicketNumber в деталях не совпадает с запрошенным"
         assert d.ClientName, "ClientName пустой"
+        for name_part in [passenger["LastName"], passenger["FirstName"], passenger["MiddleName"]]:
+            assert name_part.upper() in d.ClientName.upper(), (
+                f"'{name_part}' не найден в ClientName '{d.ClientName}'"
+            )
+        assert d.Email == booking_payload["Email"], f"Email не совпадает: ожидался '{booking_payload['Email']}'"
+        assert d.ClientCitizenship == passenger["Citizenship"], "Citizenship не совпадает"
+        assert d.ClientPasport == passenger["DocumentNumber"], "Номер документа не совпадает"
+        assert d.ClientDateOfBirthDay is not None and d.ClientDateOfBirthDay.startswith(passenger["Birthdate"]), (
+            f"Дата рождения не совпадает: ожидалась '{passenger['Birthdate']}', получена '{d.ClientDateOfBirthDay}'"
+        )
+        assert d.TarifId == passenger["TarifId"], f"TarifId не совпадает: ожидался {passenger['TarifId']}"
+        assert d.PlaceDepart == passenger["PlaceNumber"], f"PlaceDepart не совпадает: ожидалось {passenger['PlaceNumber']}"
+        assert d.CityDepartId == carrier["departure"], f"CityDepartId не совпадает: ожидался {carrier['departure']}"
+        assert d.CityArriveId == carrier["arrival"], f"CityArriveId не совпадает: ожидался {carrier['arrival']}"
         assert d.PhoneNumber, "PhoneNumber пустой"
         assert d.DateDepart, "DateDepart пустой"
         assert d.PriceTicket is not None and d.PriceTicket > 0
@@ -252,6 +286,10 @@ def test_user_booking_flow(
         assert d.RouteDepart is not None, "RouteDepart отсутствует"
         assert d.RouteDepart.DepartTime, "DepartTime пустой"
         assert d.RouteDepart.ArriveTime, "ArriveTime пустой"
+        assert d.RouteDepart.DepartPoint is not None, "DepartPoint отсутствует"
+        assert d.RouteDepart.DepartPoint.Name, "DepartPoint.Name пустой"
+        assert d.RouteDepart.ArrivePoint is not None, "ArrivePoint отсутствует"
+        assert d.RouteDepart.ArrivePoint.Name, "ArrivePoint.Name пустой"
         assert d.HasAbilityChangeDate is not None, "HasAbilityChangeDate отсутствует"
         assert d.HasAbilityAnnulationTicket is not None, "HasAbilityAnnulationTicket отсутствует"
 
@@ -424,6 +462,23 @@ def test_user_multi_ticket_booking_flow(
         allure.attach(str(order_id), name="order_id", attachment_type=allure.attachment_type.TEXT)
         allure.attach(str(ticket_numbers), name="ticket_numbers", attachment_type=allure.attachment_type.TEXT)
 
+    with allure.step("Ticket Exists"):
+        for tn in ticket_numbers:
+            exists_payload = {"Number": tn, "Lang": LANG_RUS}
+            exists_response = user_tickets_client.ticket_exists(exists_payload)
+            allure.attach(
+                exists_response.text,
+                name=f"ticket_exists_response_{tn}",
+                attachment_type=allure.attachment_type.JSON,
+            )
+
+            assert exists_response.status_code in range(200, 300)
+            assert exists_response.headers["Content-Type"].startswith("application/json")
+
+            exists_data = TicketExistsResponse(**exists_response.json())
+            assert exists_data.Error is None
+            assert exists_data.Result is True, f"Билет {tn} не найден в системе"
+
     with allure.step("Get Tickets"):
         get_tickets_payload = {
             "Page": 1,
@@ -459,6 +514,8 @@ def test_user_multi_ticket_booking_flow(
             )
 
     with allure.step("Get Ticket Details (оба билета)"):
+        seat_to_passenger = {p["PlaceNumber"]: p for p in booking_payload["Passengers"]}
+
         for ticket_number in ticket_numbers:
             details_payload = {"Number": ticket_number, "Lang": LANG_RUS}
             allure.attach(
@@ -481,8 +538,26 @@ def test_user_multi_ticket_booking_flow(
             assert details_data.Result is not None
 
             d = details_data.Result
-            assert d.TicketNumber == ticket_number, f"TicketNumber в деталях не совпадает с запрошенным: {ticket_number}"
+            passenger = seat_to_passenger.get(d.PlaceDepart)
+            assert passenger is not None, (
+                f"Не найден пассажир для места {d.PlaceDepart} у билета {ticket_number}"
+            )
+
+            assert d.TicketNumber == ticket_number, f"TicketNumber в деталях не совпадает: {ticket_number}"
             assert d.ClientName, f"ClientName пустой у билета {ticket_number}"
+            for name_part in [passenger["LastName"], passenger["FirstName"], passenger["MiddleName"]]:
+                assert name_part.upper() in d.ClientName.upper(), (
+                    f"'{name_part}' не найден в ClientName '{d.ClientName}' (билет {ticket_number})"
+                )
+            assert d.Email == booking_payload["Email"], f"Email не совпадает у билета {ticket_number}"
+            assert d.ClientCitizenship == passenger["Citizenship"], f"Citizenship не совпадает у билета {ticket_number}"
+            assert d.ClientPasport == passenger["DocumentNumber"], f"Номер документа не совпадает у билета {ticket_number}"
+            assert d.ClientDateOfBirthDay is not None and d.ClientDateOfBirthDay.startswith(passenger["Birthdate"]), (
+                f"Дата рождения не совпадает у билета {ticket_number}"
+            )
+            assert d.TarifId == passenger["TarifId"], f"TarifId не совпадает у билета {ticket_number}"
+            assert d.CityDepartId == carrier["departure"], f"CityDepartId не совпадает у билета {ticket_number}"
+            assert d.CityArriveId == carrier["arrival"], f"CityArriveId не совпадает у билета {ticket_number}"
             assert d.PhoneNumber, f"PhoneNumber пустой у билета {ticket_number}"
             assert d.DateDepart, f"DateDepart пустой у билета {ticket_number}"
             assert d.PriceTicket is not None and d.PriceTicket > 0
@@ -491,5 +566,9 @@ def test_user_multi_ticket_booking_flow(
             assert d.RouteDepart is not None, f"RouteDepart отсутствует у билета {ticket_number}"
             assert d.RouteDepart.DepartTime, f"DepartTime пустой у билета {ticket_number}"
             assert d.RouteDepart.ArriveTime, f"ArriveTime пустой у билета {ticket_number}"
+            assert d.RouteDepart.DepartPoint is not None, f"DepartPoint отсутствует у билета {ticket_number}"
+            assert d.RouteDepart.DepartPoint.Name, f"DepartPoint.Name пустой у билета {ticket_number}"
+            assert d.RouteDepart.ArrivePoint is not None, f"ArrivePoint отсутствует у билета {ticket_number}"
+            assert d.RouteDepart.ArrivePoint.Name, f"ArrivePoint.Name пустой у билета {ticket_number}"
             assert d.HasAbilityChangeDate is not None, f"HasAbilityChangeDate отсутствует у билета {ticket_number}"
             assert d.HasAbilityAnnulationTicket is not None, f"HasAbilityAnnulationTicket отсутствует у билета {ticket_number}"

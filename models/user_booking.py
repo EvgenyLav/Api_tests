@@ -62,12 +62,24 @@ class TicketsListResponse(BaseModel):
     Error: ApiError | None = None
 
 
+class RoutePoint(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    Name: str | None = None
+    Latitude: str | None = None
+    Longitude: str | None = None
+
+
 class RouteDepartDetails(BaseModel):
     model_config = ConfigDict(extra="allow")
     DepartTime: str | None = None
     ArriveTime: str | None = None
     DepartureDateTime: str | None = None
     ArrivalDateTime: str | None = None
+    DepartDate: str | None = None
+    ArriveDate: str | None = None
+    RouteDate: str | None = None
+    DepartPoint: RoutePoint | None = None
+    ArrivePoint: RoutePoint | None = None
 
 
 class TicketDetailsResult(BaseModel):
@@ -75,11 +87,26 @@ class TicketDetailsResult(BaseModel):
     TicketNumber: str | None = None
     ClientName: str | None = None
     PhoneNumber: str | None = None
+    PhoneNumberTwo: str | None = None
+    Email: str | None = None
     DateDepart: str | None = None
     PriceTicket: float | None = None
     CurrencyName: str | None = None
+    CurrencyId: int | None = None
     PdfUrl: str | None = None
     Id: int | None = None
+    CityDepart: str | None = None
+    CityArrive: str | None = None
+    CityDepartId: int | None = None
+    CityArriveId: int | None = None
+    TarifId: int | None = None
+    TarifName: str | None = None
+    PlaceDepart: int | None = None
+    PlaceReturn: int | None = None
+    ClientCitizenship: str | None = None
+    ClientPasport: str | None = None
+    ClientDateOfBirthDay: str | None = None
+    Condition: str | None = None
     RouteDepart: RouteDepartDetails | None = None
     HasAbilityChangeDate: bool | None = None
     HasAbilityAnnulationTicket: bool | None = None
@@ -87,6 +114,11 @@ class TicketDetailsResult(BaseModel):
 
 class TicketDetailsResponse(BaseModel):
     Result: TicketDetailsResult | None = None
+    Error: ApiError | None = None
+
+
+class TicketExistsResponse(BaseModel):
+    Result: bool | None = None
     Error: ApiError | None = None
 
 
