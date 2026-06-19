@@ -15,6 +15,7 @@ from models.user_booking import (
     UserBookingResponse,
     TicketsListResponse,
     TicketDetailsResponse,
+    TicketAnnulationResponse,
 )
 from tests.builders.alphabank import build_status_payload, build_validation_payload
 from tests.builders.booking import build_booking_payload
@@ -214,7 +215,9 @@ def test_user_booking_flow(
             attachment_type=allure.attachment_type.JSON,
         )
 
-        assert create_ticket_response.status_code in range(200, 300)
+        assert create_ticket_response.status_code in range(200, 300), (
+            f"create_ticket вернул {create_ticket_response.status_code}: {create_ticket_response.text}"
+        )
         assert create_ticket_response.headers["Content-Type"].startswith("application/json")
 
         create_ticket_data = CreateTicketResponse(**create_ticket_response.json())
@@ -363,7 +366,37 @@ def test_user_booking_flow(
         assert d.RouteDepart.ArrivePoint is not None, "ArrivePoint отсутствует"
         assert d.RouteDepart.ArrivePoint.Name, "ArrivePoint.Name пустой"
         assert d.HasAbilityChangeDate is not None, "HasAbilityChangeDate отсутствует"
-        assert d.HasAbilityAnnulationTicket is not None, "HasAbilityAnnulationTicket отсутствует"
+        assert d.HasAbilityAnnulationTicket is True, "Аннуляция недоступна для билета"
+
+        ticket_id_for_annulation = d.Id
+        ticket_number_for_annulation = d.TicketNumber
+
+    with allure.step("Annulation"):
+        annulation_payload = {
+            "TicketNumber": ticket_number_for_annulation,
+            "TicketId": ticket_id_for_annulation,
+            "Lang": LANG_RUS,
+        }
+        allure.attach(
+            json.dumps(annulation_payload, ensure_ascii=False, indent=2),
+            name="annulation_payload",
+            attachment_type=allure.attachment_type.JSON,
+        )
+        annulation_response = user_tickets_client.annulation(annulation_payload)
+        allure.attach(
+            annulation_response.text,
+            name="annulation_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert annulation_response.status_code in range(200, 300), (
+            f"annulation вернул {annulation_response.status_code}: {annulation_response.text}"
+        )
+        assert annulation_response.headers["Content-Type"].startswith("application/json")
+
+        annulation_data = TicketAnnulationResponse(**annulation_response.json())
+        assert annulation_data.Error is None
+        assert annulation_data.Result is True, f"Аннуляция билета {ticket_number_for_annulation} не выполнена"
 
 
 @allure.feature("Booking API")
@@ -576,7 +609,9 @@ def test_user_multi_ticket_booking_flow(
             attachment_type=allure.attachment_type.JSON,
         )
 
-        assert create_ticket_response.status_code in range(200, 300)
+        assert create_ticket_response.status_code in range(200, 300), (
+            f"create_ticket вернул {create_ticket_response.status_code}: {create_ticket_response.text}"
+        )
         assert create_ticket_response.headers["Content-Type"].startswith("application/json")
 
         create_ticket_data = CreateTicketResponse(**create_ticket_response.json())
@@ -651,6 +686,7 @@ def test_user_multi_ticket_booking_flow(
 
     with allure.step("Get Ticket Details (оба билета)"):
         seat_to_passenger = {p["PlaceNumber"]: p for p in booking_payload["Passengers"]}
+        ticket_ids: dict[str, int] = {}
 
         for ticket_number in ticket_numbers:
             details_payload = {"Number": ticket_number, "Lang": LANG_RUS}
@@ -707,4 +743,33 @@ def test_user_multi_ticket_booking_flow(
             assert d.RouteDepart.ArrivePoint is not None, f"ArrivePoint отсутствует у билета {ticket_number}"
             assert d.RouteDepart.ArrivePoint.Name, f"ArrivePoint.Name пустой у билета {ticket_number}"
             assert d.HasAbilityChangeDate is not None, f"HasAbilityChangeDate отсутствует у билета {ticket_number}"
-            assert d.HasAbilityAnnulationTicket is not None, f"HasAbilityAnnulationTicket отсутствует у билета {ticket_number}"
+            assert d.HasAbilityAnnulationTicket is True, f"Аннуляция недоступна для билета {ticket_number}"
+            ticket_ids[ticket_number] = d.Id
+
+    with allure.step("Annulation (оба билета)"):
+        for ticket_number in ticket_numbers:
+            annulation_payload = {
+                "TicketNumber": ticket_number,
+                "TicketId": ticket_ids[ticket_number],
+                "Lang": LANG_RUS,
+            }
+            allure.attach(
+                json.dumps(annulation_payload, ensure_ascii=False, indent=2),
+                name=f"annulation_payload_{ticket_number}",
+                attachment_type=allure.attachment_type.JSON,
+            )
+            annulation_response = user_tickets_client.annulation(annulation_payload)
+            allure.attach(
+                annulation_response.text,
+                name=f"annulation_response_{ticket_number}",
+                attachment_type=allure.attachment_type.JSON,
+            )
+
+            assert annulation_response.status_code in range(200, 300), (
+                f"annulation вернул {annulation_response.status_code} для билета {ticket_number}: {annulation_response.text}"
+            )
+            assert annulation_response.headers["Content-Type"].startswith("application/json")
+
+            annulation_data = TicketAnnulationResponse(**annulation_response.json())
+            assert annulation_data.Error is None
+            assert annulation_data.Result is True, f"Аннуляция билета {ticket_number} не выполнена"

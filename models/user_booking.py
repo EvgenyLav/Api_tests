@@ -130,6 +130,11 @@ class TicketExistsResponse(BaseModel):
     Error: ApiError | None = None
 
 
+class TicketAnnulationResponse(BaseModel):
+    Result: bool | None = None
+    Error: ApiError | None = None
+
+
 class TicketBlanksResponse(BaseModel):
     Result: Any = None
     Error: ApiError | None = None

@@ -315,7 +315,9 @@ def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_cli
             attachment_type=allure.attachment_type.JSON,
         )
 
-        assert create_ticket_response.status_code in range(200, 300)
+        assert create_ticket_response.status_code in range(200, 300), (
+            f"create_ticket вернул {create_ticket_response.status_code}: {create_ticket_response.text}"
+        )
         assert create_ticket_response.headers["Content-Type"].startswith("application/json")
 
         create_ticket_data = CreateTicketResponse(**create_ticket_response.json())
