@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASE_URL: ${{ secrets.BASE_URL }}
+      USER_LOGIN: ${{ secrets.USER_LOGIN }}
+      USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
       PYTEST_ARGS: ${{ inputs.pytest_args || '-m smoke' }}
 
     steps:
@@ -37,6 +39,8 @@ jobs:
           mkdir -p allure-results
           docker run --rm \
             -e BASE_URL="$BASE_URL" \
+            -e USER_LOGIN="$USER_LOGIN" \
+            -e USER_PASSWORD="$USER_PASSWORD" \
             -v "$PWD/allure-results:/app/allure-results" \
             simple-api-tests \
             pytest $PYTEST_ARGS --alluredir=allure-results --clean-alluredir

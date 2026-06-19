@@ -8,10 +8,11 @@ fake = Faker("ru_RU")
 def build_booking_payload(
     route_id: int | str,
     search_id: int | str,
-    place_number: int,
+    place_number: int | list[int],
     tariff_id: int | None,
     user_id: str | None = None,
 ) -> dict:
+    places = place_number if isinstance(place_number, list) else [place_number]
     passenger_tariff_id = tariff_id if tariff_id is not None else 3
 
     return {
@@ -27,8 +28,9 @@ def build_booking_payload(
                 "DocumentNumber": f"12{fake.numerify('#########')}",
                 "HasBonus": False,
                 "TarifId": passenger_tariff_id,
-                "PlaceNumber": place_number,
+                "PlaceNumber": p,
             }
+            for p in places
         ],
         "Phone": fake.numerify("+37529#######"),
         "PhoneTwo": fake.numerify("+37533#######"),
