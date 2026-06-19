@@ -15,7 +15,7 @@ from models.booking_flow import (
 from tests.builders.alphabank import build_status_payload, build_validation_payload
 from models.routes_search import RoutesSearchResponse
 from tests.builders.booking import build_booking_payload
-from utils.constants import CARRIER_CONFIGS, LANG_RUS
+from utils.constants import CARRIER_CONFIGS, LANG_RUS, EXPECTED_TARIFF_NAMES, EXPECTED_CURRENCIES
 
 
 @allure.feature("Booking API")
@@ -156,7 +156,18 @@ def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_cli
         tariffs_data = GetTariffsResponse(**get_tariffs_response.json())
         assert tariffs_data.Result, "Тарифы не найдены"
         assert all(tariff.Name for tariff in tariffs_data.Result), "Есть тарифы без имени"
-        assert tariffs_data.Result[0].Prices, "Цены не найдены"
+
+        returned_names = {tariff.Name for tariff in tariffs_data.Result}
+        assert returned_names <= set(EXPECTED_TARIFF_NAMES), (
+            f"Неожиданные тарифы: {returned_names - set(EXPECTED_TARIFF_NAMES)}"
+        )
+
+        for tariff in tariffs_data.Result:
+            assert tariff.Prices, f"Цены не найдены для тарифа '{tariff.Name}'"
+            for price in tariff.Prices:
+                assert price.CurrencyName in EXPECTED_CURRENCIES, (
+                    f"Неожиданная валюта '{price.CurrencyName}' в тарифе '{tariff.Name}'"
+                )
 
     with allure.step("Select Place"):
         select_place_payload = {
@@ -329,4 +340,4 @@ def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_cli
 
         is_created_data = IsCreatedResponse(**is_created_response.json())
         assert is_created_data.Error is None
-        assert is_created_data.Result is not None
+        assert is_created_data.Result is True, f"Билет не создан: Result={is_created_data.Result}"

@@ -3,7 +3,7 @@ import allure
 import json
 
 from models.routes_search import RoutesSearchResponse
-from utils.constants import MINSK, MOSCOW
+from utils.constants import MINSK, MOSCOW, MINSK_NAME, MOSCOW_NAME
 
 
 @allure.feature("Routes Search API")
@@ -44,8 +44,8 @@ def test_routes_search(routes_client, valid_depart_date):
         assert data.Result.all_routes, "Маршруты не найдены"
 
         for route in data.Result.all_routes:
-            assert route.City1.NameRus == "Москва"
-            assert route.City2.NameRus == "Минск"
+            assert route.City1.NameRus == MOSCOW_NAME
+            assert route.City2.NameRus == MINSK_NAME
 
     with allure.step("Проверка SEARCHID"):
         assert data.Result.Id is not None

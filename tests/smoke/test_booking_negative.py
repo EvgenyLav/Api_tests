@@ -51,6 +51,7 @@ def test_booking_missing_required_field(
         f"Ожидался 400 при отсутствии '{missing_field}', "
         f"получен {response.status_code}. Body: {response.text}"
     )
+    assert response.headers["Content-Type"].startswith("application/json")
     data = response.json()
     assert data.get("Error") is not None, (
         f"Ожидалось поле Error в ответе при отсутствии '{missing_field}'. Body: {response.text}"
@@ -116,6 +117,7 @@ def test_booking_occupied_place(
     assert response.status_code == 400, (
         f"Ожидался 400 для занятого места, получен {response.status_code}. Body: {response.text}"
     )
+    assert response.headers["Content-Type"].startswith("application/json")
     data = BookingResponse(**response.json())
     assert data.Result is None or not data.Result.PaymentUrl, (
         f"Ожидался пустой Result для занятого места. Body: {response.text}"

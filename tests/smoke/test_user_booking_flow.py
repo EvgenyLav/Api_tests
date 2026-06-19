@@ -35,7 +35,9 @@ def test_user_booking_flow(
     with allure.step("Auth token"):
         assert token_data.access_token, "access_token пустой"
         assert token_data.token_type == "bearer"
+        assert token_data.expires_in is not None and token_data.expires_in > 0, "expires_in некорректный"
         allure.attach(token_data.token_type, name="token_type", attachment_type=allure.attachment_type.TEXT)
+        allure.attach(str(token_data.expires_in), name="expires_in", attachment_type=allure.attachment_type.TEXT)
 
     with allure.step("Search Routes"):
         search_payload = {
@@ -56,12 +58,23 @@ def test_user_booking_flow(
         )
 
         assert search_response.status_code in range(200, 300)
+        assert search_response.headers["Content-Type"].startswith("application/json")
+
         search_data = RoutesSearchResponse(**search_response.json())
+        assert search_data.Result.CityDeparture == carrier["departure"]
+        assert search_data.Result.CityArrival == carrier["arrival"]
+        assert search_data.Result.Id is not None
+        assert search_data.Result.all_routes, "Маршруты не найдены"
+
         route_group = search_data.Result.route_group_by_carrier(carrier["carrier_id"])
         assert route_group is not None, f"Маршруты агрегатора '{carrier['name']}' не найдены"
+        assert route_group.departure_date == valid_booking_depart_date
 
         route_id = route_group.Id
         search_id = search_data.Result.Id
+        assert route_id is not None, "Id маршрута не найден в ответе routes/search"
+        allure.attach(str(search_id), name="search_id", attachment_type=allure.attachment_type.TEXT)
+        allure.attach(str(route_id), name="route_id", attachment_type=allure.attachment_type.TEXT)
 
     with allure.step("Get Route"):
         get_route_payload = {
@@ -77,12 +90,23 @@ def test_user_booking_flow(
         )
 
         assert get_route_response.status_code in range(200, 300)
+        assert get_route_response.headers["Content-Type"].startswith("application/json")
+
         route_data = GetRouteResponse(**get_route_response.json())
         route_details = route_data.Result.Route
 
+        assert str(route_details.Id) == str(route_id)
+        assert route_details.City1 and route_details.City2
+        assert route_details.Tariffs
+        assert route_details.FullBusPlaces
         assert route_details.free_bus_places, "Свободные места не найдены"
+        assert route_details.departure_date == valid_booking_depart_date
+
         first_place = route_details.free_bus_places[0]
         tariff_id = next((t.Id for t in route_details.Tariffs if t.Id is not None), None)
+        allure.attach(str(first_place), name="first_place", attachment_type=allure.attachment_type.TEXT)
+        if tariff_id is not None:
+            allure.attach(str(tariff_id), name="tariff_id", attachment_type=allure.attachment_type.TEXT)
 
     with allure.step("Select Place"):
         select_place_payload = {
@@ -99,6 +123,7 @@ def test_user_booking_flow(
         )
 
         assert select_response.status_code in range(200, 300)
+        assert select_response.headers["Content-Type"].startswith("application/json")
         select_data = SelectPlaceResponse(**select_response.json())
         assert select_data.Result.Success is True
 
@@ -166,13 +191,19 @@ def test_user_booking_flow(
         assert tickets_data.Error is None
         assert tickets_data.Result is not None
         assert tickets_data.Result.Collections, "Список билетов пустой"
-        assert tickets_data.Result.Count > 0
+        assert tickets_data.Result.Count is not None and tickets_data.Result.Count > 0
+        assert tickets_data.Result.CurrentPage == 1
+        assert tickets_data.Result.PageSize == 10
 
         for ticket in tickets_data.Result.Collections:
             assert ticket.TicketNumber is not None
             assert ticket.PdfUrl is not None, f"PdfUrl отсутствует у билета {ticket.TicketNumber}"
             assert ticket.Price is not None and ticket.Price >= 0
             assert ticket.Currency is not None
+
+        ticket_ids_in_list = {t.TicketNumber for t in tickets_data.Result.Collections}
+        for tn in ticket_number_list:
+            assert tn in ticket_ids_in_list, f"Забронированный билет {tn} не найден в списке билетов пользователя"
 
         first_ticket = tickets_data.Result.Collections[0]
         allure.attach(

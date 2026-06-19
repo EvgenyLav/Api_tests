@@ -1,5 +1,7 @@
 MINSK = 1
 MOSCOW = 3
+MINSK_NAME = "Минск"
+MOSCOW_NAME = "Москва"
 LANG_RUS = "RUS"
 
 EXPECTED_TARIFF_NAMES = [
