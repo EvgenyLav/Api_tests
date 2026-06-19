@@ -142,5 +142,5 @@ class CreateTicketResponse(BaseModel):
 
 
 class IsCreatedResponse(BaseModel):
-    Result: bool | dict | None
+    Result: CreateTicketResult | bool | None
     Error: ApiError | None = None

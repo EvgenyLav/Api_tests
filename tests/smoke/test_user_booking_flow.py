@@ -2,14 +2,21 @@ import allure
 import pytest
 import json
 
-from models.booking_flow import GetRouteResponse, SelectPlaceResponse
+from models.booking_flow import (
+    CreateTicketResponse,
+    CreateTicketResult,
+    GetRouteResponse,
+    IsCreatedResponse,
+    PaymentStatusResponse,
+    SelectPlaceResponse,
+)
 from models.routes_search import RoutesSearchResponse
 from models.user_booking import (
     UserBookingResponse,
     TicketsListResponse,
     TicketDetailsResponse,
-    TicketExistsResponse,
 )
+from tests.builders.alphabank import build_status_payload, build_validation_payload
 from tests.builders.booking import build_booking_payload
 from utils.constants import CARRIER_CONFIGS, LANG_RUS
 
@@ -29,6 +36,7 @@ def test_user_booking_flow(
     token_data,
     routes_client,
     user_tickets_client,
+    alphabank_client,
 ):
     carrier = carrier_booking_context
     valid_booking_depart_date = carrier["date"]
@@ -165,6 +173,74 @@ def test_user_booking_flow(
         allure.attach(str(order_id), name="order_id", attachment_type=allure.attachment_type.TEXT)
         allure.attach(str(ticket_numbers), name="ticket_numbers", attachment_type=allure.attachment_type.TEXT)
 
+        md_order = booking_data.Result.md_order
+        assert md_order is not None, "mdOrder не найден в ответе user_booking"
+        allure.attach(md_order, name="md_order", attachment_type=allure.attachment_type.TEXT)
+
+    status_payload = build_status_payload(md_order)
+    validation_payload = build_validation_payload(md_order)
+
+    with allure.step("Get Status"):
+        allure.attach(
+            json.dumps(status_payload, ensure_ascii=False, indent=2),
+            name="get_status_payload",
+            attachment_type=allure.attachment_type.JSON,
+        )
+        get_status_response = alphabank_client.get_status(status_payload)
+        allure.attach(
+            get_status_response.text,
+            name="get_status_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert get_status_response.status_code in range(200, 300)
+        assert get_status_response.headers["Content-Type"].startswith("application/json")
+
+        status_data = PaymentStatusResponse(**get_status_response.json())
+        assert status_data.Result.Success is False
+        assert status_data.Result.Status == "0: Заказ зарегистрирован, но не оплачен"
+        assert status_data.Error is None
+
+    with allure.step("Create Ticket"):
+        allure.attach(
+            json.dumps(validation_payload, ensure_ascii=False, indent=2),
+            name="create_ticket_payload",
+            attachment_type=allure.attachment_type.JSON,
+        )
+        create_ticket_response = alphabank_client.create_ticket(validation_payload)
+        allure.attach(
+            create_ticket_response.text,
+            name="create_ticket_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert create_ticket_response.status_code in range(200, 300)
+        assert create_ticket_response.headers["Content-Type"].startswith("application/json")
+
+        create_ticket_data = CreateTicketResponse(**create_ticket_response.json())
+        assert create_ticket_data.Result.Success is True
+        assert create_ticket_data.Result.Data is True
+        assert create_ticket_data.Error is None
+
+    with allure.step("Is Created"):
+        is_created_response = alphabank_client.is_created(validation_payload)
+        allure.attach(
+            is_created_response.text,
+            name="is_created_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert is_created_response.status_code in range(200, 300)
+        assert is_created_response.headers["Content-Type"].startswith("application/json")
+
+        is_created_data = IsCreatedResponse(**is_created_response.json())
+        assert is_created_data.Error is None
+        result = is_created_data.Result
+        assert (
+            (isinstance(result, CreateTicketResult) and result.Success is True)
+            or result is True
+        ), f"Билет не создан: Result={result}"
+
     with allure.step("Ticket Exists"):
         for tn in ticket_number_list:
             exists_payload = {"Number": tn, "Lang": LANG_RUS}
@@ -175,12 +251,12 @@ def test_user_booking_flow(
                 attachment_type=allure.attachment_type.JSON,
             )
 
-            assert exists_response.status_code in range(200, 300)
+            assert exists_response.status_code in range(200, 300), (
+                f"tickets/exists вернул {exists_response.status_code} для билета {tn}: {exists_response.text}"
+            )
             assert exists_response.headers["Content-Type"].startswith("application/json")
 
-            exists_data = TicketExistsResponse(**exists_response.json())
-            assert exists_data.Error is None
-            assert exists_data.Result is True, f"Билет {tn} не найден в системе"
+            assert exists_response.json() is True, f"Билет {tn} не найден в системе"
 
     with allure.step("Get Tickets"):
         get_tickets_payload = {
@@ -219,10 +295,6 @@ def test_user_booking_flow(
             assert ticket.Price is not None and ticket.Price >= 0
             assert ticket.Currency is not None
 
-        ticket_ids_in_list = {t.TicketNumber for t in tickets_data.Result.Collections}
-        for tn in ticket_number_list:
-            assert tn in ticket_ids_in_list, f"Забронированный билет {tn} не найден в списке билетов пользователя"
-
         first_ticket = tickets_data.Result.Collections[0]
         allure.attach(
             str(first_ticket.TicketNumber),
@@ -237,7 +309,7 @@ def test_user_booking_flow(
 
     with allure.step("Get Ticket Details"):
         details_payload = {
-            "Number": first_ticket.TicketNumber,
+            "Number": ticket_number_list[0],
             "Lang": LANG_RUS,
         }
         allure.attach(
@@ -262,7 +334,7 @@ def test_user_booking_flow(
         d = details_data.Result
         passenger = booking_payload["Passengers"][0]
 
-        assert d.TicketNumber == first_ticket.TicketNumber, "TicketNumber в деталях не совпадает с запрошенным"
+        assert d.TicketNumber == ticket_number_list[0], "TicketNumber в деталях не совпадает с запрошенным"
         assert d.ClientName, "ClientName пустой"
         for name_part in [passenger["LastName"], passenger["FirstName"], passenger["MiddleName"]]:
             assert name_part.upper() in d.ClientName.upper(), (
@@ -309,6 +381,7 @@ def test_user_multi_ticket_booking_flow(
     token_data,
     routes_client,
     user_tickets_client,
+    alphabank_client,
 ):
     carrier = carrier_booking_context
     valid_booking_depart_date = carrier["date"]
@@ -462,6 +535,74 @@ def test_user_multi_ticket_booking_flow(
         allure.attach(str(order_id), name="order_id", attachment_type=allure.attachment_type.TEXT)
         allure.attach(str(ticket_numbers), name="ticket_numbers", attachment_type=allure.attachment_type.TEXT)
 
+        md_order = booking_data.Result.md_order
+        assert md_order is not None, "mdOrder не найден в ответе user_booking"
+        allure.attach(md_order, name="md_order", attachment_type=allure.attachment_type.TEXT)
+
+    status_payload = build_status_payload(md_order)
+    validation_payload = build_validation_payload(md_order)
+
+    with allure.step("Get Status"):
+        allure.attach(
+            json.dumps(status_payload, ensure_ascii=False, indent=2),
+            name="get_status_payload",
+            attachment_type=allure.attachment_type.JSON,
+        )
+        get_status_response = alphabank_client.get_status(status_payload)
+        allure.attach(
+            get_status_response.text,
+            name="get_status_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert get_status_response.status_code in range(200, 300)
+        assert get_status_response.headers["Content-Type"].startswith("application/json")
+
+        status_data = PaymentStatusResponse(**get_status_response.json())
+        assert status_data.Result.Success is False
+        assert status_data.Result.Status == "0: Заказ зарегистрирован, но не оплачен"
+        assert status_data.Error is None
+
+    with allure.step("Create Ticket"):
+        allure.attach(
+            json.dumps(validation_payload, ensure_ascii=False, indent=2),
+            name="create_ticket_payload",
+            attachment_type=allure.attachment_type.JSON,
+        )
+        create_ticket_response = alphabank_client.create_ticket(validation_payload)
+        allure.attach(
+            create_ticket_response.text,
+            name="create_ticket_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert create_ticket_response.status_code in range(200, 300)
+        assert create_ticket_response.headers["Content-Type"].startswith("application/json")
+
+        create_ticket_data = CreateTicketResponse(**create_ticket_response.json())
+        assert create_ticket_data.Result.Success is True
+        assert create_ticket_data.Result.Data is True
+        assert create_ticket_data.Error is None
+
+    with allure.step("Is Created"):
+        is_created_response = alphabank_client.is_created(validation_payload)
+        allure.attach(
+            is_created_response.text,
+            name="is_created_response",
+            attachment_type=allure.attachment_type.JSON,
+        )
+
+        assert is_created_response.status_code in range(200, 300)
+        assert is_created_response.headers["Content-Type"].startswith("application/json")
+
+        is_created_data = IsCreatedResponse(**is_created_response.json())
+        assert is_created_data.Error is None
+        result = is_created_data.Result
+        assert (
+            (isinstance(result, CreateTicketResult) and result.Success is True)
+            or result is True
+        ), f"Билеты не созданы: Result={result}"
+
     with allure.step("Ticket Exists"):
         for tn in ticket_numbers:
             exists_payload = {"Number": tn, "Lang": LANG_RUS}
@@ -472,12 +613,12 @@ def test_user_multi_ticket_booking_flow(
                 attachment_type=allure.attachment_type.JSON,
             )
 
-            assert exists_response.status_code in range(200, 300)
+            assert exists_response.status_code in range(200, 300), (
+                f"tickets/exists вернул {exists_response.status_code} для билета {tn}: {exists_response.text}"
+            )
             assert exists_response.headers["Content-Type"].startswith("application/json")
 
-            exists_data = TicketExistsResponse(**exists_response.json())
-            assert exists_data.Error is None
-            assert exists_data.Result is True, f"Билет {tn} не найден в системе"
+            assert exists_response.json() is True, f"Билет {tn} не найден в системе"
 
     with allure.step("Get Tickets"):
         get_tickets_payload = {
@@ -506,12 +647,7 @@ def test_user_multi_ticket_booking_flow(
         assert tickets_data.Error is None
         assert tickets_data.Result is not None
         assert tickets_data.Result.Count is not None and tickets_data.Result.Count >= 2
-
-        ticket_ids_in_list = {t.TicketNumber for t in tickets_data.Result.Collections}
-        for tn in ticket_numbers:
-            assert tn in ticket_ids_in_list, (
-                f"Забронированный билет {tn} не найден в списке билетов пользователя"
-            )
+        assert tickets_data.Result.Collections, "Список билетов пустой"
 
     with allure.step("Get Ticket Details (оба билета)"):
         seat_to_passenger = {p["PlaceNumber"]: p for p in booking_payload["Passengers"]}

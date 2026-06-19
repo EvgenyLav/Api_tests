@@ -5,6 +5,7 @@ import json
 from models.booking_flow import (
     BookingResponse,
     CreateTicketResponse,
+    CreateTicketResult,
     GetRouteResponse,
     GetTariffsResponse,
     IsCreatedResponse,
@@ -340,4 +341,9 @@ def test_booking_ticket_flow(carrier_booking_context, routes_client, tickets_cli
 
         is_created_data = IsCreatedResponse(**is_created_response.json())
         assert is_created_data.Error is None
-        assert is_created_data.Result is True, f"Билет не создан: Result={is_created_data.Result}"
+        result = is_created_data.Result
+        assert (
+            (isinstance(result, CreateTicketResult) and result.Success is True)
+            or result is True
+        ), f"Билет не создан: Result={result}"
+

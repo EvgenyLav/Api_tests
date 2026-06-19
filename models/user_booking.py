@@ -1,3 +1,4 @@
+import re
 from typing import Any, List
 from pydantic import BaseModel, ConfigDict
 
@@ -29,6 +30,13 @@ class UserBookingResult(BaseModel):
     model_config = ConfigDict(extra="allow")
     PaymentUrl: str | None = None
     result: UserBookingGatewayResult | None = None
+
+    @property
+    def md_order(self) -> str | None:
+        if not self.result or not self.result.Response:
+            return None
+        match = re.search(r"mdOrder=([a-zA-Z0-9-]+)", self.result.Response)
+        return match.group(1) if match else None
 
 
 class UserBookingResponse(BaseModel):
