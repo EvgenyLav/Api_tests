@@ -21,6 +21,7 @@ from config.settings import BASE_URL, ROOT_URL, USER_LOGIN, USER_PASSWORD
 from models.user_booking import TokenResponse
 from models.booking_flow import GetRouteResponse
 from models.routes_search import RoutesSearchResponse
+from tests.helpers import PlaceCleanup
 from utils.constants import MINSK, MOSCOW, CARRIER_CONFIGS, LANG_RUS
 
 
@@ -50,6 +51,22 @@ def user_tickets_client(token_data):
     client = TicketsClient(base_url=BASE_URL)
     client.session.headers.update({"Authorization": f"Bearer {token_data.access_token}"})
     return client
+
+
+@pytest.fixture
+def place_cleanup(tickets_client):
+    """Снимает выбранные места, если анонимный тест упал до брони."""
+    cleanup = PlaceCleanup(tickets_client)
+    yield cleanup
+    cleanup.finalize()
+
+
+@pytest.fixture
+def user_place_cleanup(user_tickets_client):
+    """Снимает выбранные места, если пользовательский тест упал до брони."""
+    cleanup = PlaceCleanup(user_tickets_client)
+    yield cleanup
+    cleanup.finalize()
 
 
 def get_valid_date(routes_client, city_departure, city_arrival, carrier_id=None, days_ahead=5):

@@ -1,10 +1,10 @@
 import allure
-import json
 import pytest
 
 from models.booking_flow import BookingResponse
 from models.routes_search import RoutesSearchResponse
 from tests.builders.booking import build_booking_payload
+from tests.helpers import attach_json, attach_response, attach_text
 from utils.constants import CARRIER_CONFIGS
 
 
@@ -35,17 +35,9 @@ def test_booking_missing_required_field(
     del payload[missing_field]
 
     with allure.step(f"Booking без поля '{missing_field}'"):
-        allure.attach(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            name="payload",
-            attachment_type=allure.attachment_type.JSON,
-        )
+        attach_json(payload, "payload")
         response = tickets_client.booking(payload)
-        allure.attach(
-            response.text,
-            name="response",
-            attachment_type=allure.attachment_type.JSON,
-        )
+        attach_response(response, "response")
 
     assert response.status_code == 400, (
         f"Ожидался 400 при отсутствии '{missing_field}', "
@@ -89,11 +81,7 @@ def test_booking_occupied_place(
             }).json()
         )
         second_search_id = second_search_data.Result.Id
-        allure.attach(
-            str(second_search_id),
-            name="second_search_id",
-            attachment_type=allure.attachment_type.TEXT,
-        )
+        attach_text(second_search_id, "second_search_id")
 
     with allure.step("Попытка забронировать занятое место из другого сеанса"):
         payload = build_booking_payload(
@@ -102,17 +90,9 @@ def test_booking_occupied_place(
             place_number=ctx["place_number"],
             tariff_id=ctx["tariff_id"],
         )
-        allure.attach(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            name="payload",
-            attachment_type=allure.attachment_type.JSON,
-        )
+        attach_json(payload, "payload")
         response = tickets_client.booking(payload)
-        allure.attach(
-            response.text,
-            name="response",
-            attachment_type=allure.attachment_type.JSON,
-        )
+        attach_response(response, "response")
 
     assert response.status_code == 400, (
         f"Ожидался 400 для занятого места, получен {response.status_code}. Body: {response.text}"

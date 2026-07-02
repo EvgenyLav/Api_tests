@@ -1,8 +1,8 @@
 import pytest
 import allure
-import json
 
 from models.routes_search import RoutesSearchResponse
+from tests.helpers import assert_ok_json, attach_json, attach_response, attach_text
 from utils.constants import MINSK, MOSCOW, MINSK_NAME, MOSCOW_NAME
 
 
@@ -18,21 +18,12 @@ def test_routes_search(routes_client, valid_depart_date):
     }
 
     with allure.step("Отправка запроса на /routes/search"):
-        allure.attach(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            name="search_routes_payload",
-            attachment_type=allure.attachment_type.JSON,
-        )
+        attach_json(payload, "search_routes_payload")
         response = routes_client.search_routes(payload)
-        allure.attach(
-            response.text,
-            name="search_routes_response",
-            attachment_type=allure.attachment_type.JSON,
-        )
+        attach_response(response, "search_routes_response")
 
     with allure.step("Проверка статуса ответа и формата JSON"):
-        assert response.status_code in range(200, 300)
-        assert response.headers["Content-Type"].startswith("application/json")
+        assert_ok_json(response, "routes/search")
 
     data = RoutesSearchResponse(**response.json())
 
@@ -49,7 +40,7 @@ def test_routes_search(routes_client, valid_depart_date):
 
     with allure.step("Проверка SEARCHID"):
         assert data.Result.Id is not None
-        allure.attach(str(data.Result.Id), name="search_id", attachment_type=allure.attachment_type.TEXT)
+        attach_text(data.Result.Id, "search_id")
 
     with allure.step("Проверка даты отправления"):
         assert data.Result.first_route_group.departure_date == valid_depart_date
