@@ -42,7 +42,8 @@ class RouteDetails(BaseModel):
     City2: str
     DateDepart: str
     Routes: List[RouteSegment] = Field(default_factory=list)
-    FullBusPlaces: List[BusPlace] = Field(default_factory=list)
+    # None — у перевозчика нет схемы мест (свободная рассадка), выбор места не применим
+    FullBusPlaces: List[BusPlace] | None = None
 
     @property
     def first_segment(self) -> RouteSegment | None:
@@ -59,8 +60,12 @@ class RouteDetails(BaseModel):
         return datetime.strptime(self.DateDepart, "%d.%m.%Y").strftime("%Y-%m-%d")
 
     @property
+    def has_seat_map(self) -> bool:
+        return self.FullBusPlaces is not None
+
+    @property
     def free_bus_places(self) -> List[int]:
-        return [place.Seat for place in self.FullBusPlaces if place.IsFree]
+        return [place.Seat for place in self.FullBusPlaces or [] if place.IsFree]
 
 
 class GetRouteResult(BaseModel):

@@ -17,7 +17,9 @@ class TokenResponse(BaseModel):
 class UserBookingData(BaseModel):
     model_config = ConfigDict(extra="allow")
     OrderId: int | str | None = None
-    TicketsNumber: str | List[str] | None = None
+    # у unitiki/dist номера при брони ещё не присвоены — приходит [null, ...]
+    TicketsNumber: str | List[str | None] | None = None
+    Link: str | None = None
 
 
 class UserBookingGatewayResult(BaseModel):
@@ -33,10 +35,21 @@ class UserBookingResult(BaseModel):
 
     @property
     def md_order(self) -> str | None:
-        if not self.result or not self.result.Response:
+        if not self.result:
             return None
-        match = re.search(r"mdOrder=([a-zA-Z0-9-]+)", self.result.Response)
-        return match.group(1) if match else None
+        # intercars отдаёт mdOrder в result.Response, unitiki/dist — внутри
+        # URL-encoded редиректа в result.Data.Link (mdOrder%3d...)
+        sources = [
+            self.result.Response,
+            self.result.Data.Link if self.result.Data else None,
+        ]
+        for source in sources:
+            if not source:
+                continue
+            match = re.search(r"mdOrder(?:=|%3d)([a-zA-Z0-9-]+)", source, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return None
 
 
 class UserBookingResponse(BaseModel):

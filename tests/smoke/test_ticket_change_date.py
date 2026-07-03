@@ -7,11 +7,11 @@ from tests.helpers import (
     attach_json,
     attach_response,
     attach_text,
+    book_first_place,
     get_route_details,
     get_ticket_details_ok,
     get_valid_date,
     search_route_for_carrier,
-    select_place_ok,
 )
 from utils.constants import CARRIER_CONFIGS, LANG_RUS
 
@@ -58,18 +58,15 @@ def test_ticket_change_date_flow(
     _, new_route_id, new_search_id = search_route_for_carrier(routes_client, carrier, new_date)
 
     new_route_details = get_route_details(routes_client, new_route_id, new_search_id, new_date)
-    assert new_route_details.free_bus_places, "Нет свободных мест на новую дату"
-    new_place = new_route_details.free_bus_places[0]
+    new_place = book_first_place(
+        user_tickets_client,
+        new_route_details,
+        new_route_id,
+        new_search_id,
+        user_place_cleanup,
+        step_name="Select Place (новая дата)",
+    )
     attach_text(new_place, "new_place")
-
-    select_payload = {
-        "NumberPlace": new_place,
-        "RouteId": str(new_route_id),
-        "SearchId": str(new_search_id),
-        "Lang": LANG_RUS,
-    }
-    select_place_ok(user_tickets_client, select_payload, step_name="Select Place (новая дата)")
-    user_place_cleanup.track(select_payload)
 
     with allure.step("Change Date"):
         change_date_payload = {
@@ -132,6 +129,7 @@ def test_ticket_change_date_flow(
         assert updated_details.DateDepart != original_date_depart, (
             f"Дата поездки не изменилась: '{updated_details.DateDepart}'"
         )
-        assert updated_details.PlaceDepart == new_place, (
-            f"Место не совпадает: ожидалось {new_place}, получено {updated_details.PlaceDepart}"
-        )
+        if new_route_details.has_seat_map:
+            assert updated_details.PlaceDepart == new_place, (
+                f"Место не совпадает: ожидалось {new_place}, получено {updated_details.PlaceDepart}"
+            )

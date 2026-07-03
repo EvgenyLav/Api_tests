@@ -11,6 +11,7 @@ def build_booking_payload(
     place_number: int | list[int],
     tariff_id: int | None,
     user_id: str | None = None,
+    document_id: str = "1",
 ) -> dict:
     places = place_number if isinstance(place_number, list) else [place_number]
     passenger_tariff_id = tariff_id if tariff_id is not None else 3
@@ -24,7 +25,7 @@ def build_booking_payload(
                 "Citizenship": "BY",
                 "Birthdate": fake.date_of_birth(minimum_age=18, maximum_age=70).strftime("%Y-%m-%d"),
                 "Gender": "M",
-                "DocumentId": "1",
+                "DocumentId": document_id,
                 "DocumentNumber": f"12{fake.numerify('#########')}",
                 "HasBonus": False,
                 "TarifId": passenger_tariff_id,

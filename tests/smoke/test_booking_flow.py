@@ -63,6 +63,8 @@ def test_booking_ticket_flow(
         assert route_group_check.Id == route_id
 
     route_details = get_route_details(routes_client, route_id, search_id, valid_booking_depart_date)
+    if not route_details.has_seat_map:
+        pytest.skip(f"У перевозчика '{carrier['name']}' свободная рассадка — выбор места не применим")
     assert route_details.free_bus_places, "Свободные места не найдены"
 
     first_place = route_details.free_bus_places[0]

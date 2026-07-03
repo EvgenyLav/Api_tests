@@ -23,13 +23,13 @@ from models.routes_search import RoutesSearchResponse
 from tests.builders.booking import build_booking_payload
 from tests.helpers import (
     PlaceCleanup,
+    book_first_place,
     get_route_details,
     get_ticket_details_ok,
     get_valid_date,
     pick_tariff_id,
     process_payment,
     search_route_for_carrier,
-    select_place_ok,
     user_booking_ok,
 )
 from utils.constants import MINSK, MOSCOW, CARRIER_CONFIGS, LANG_RUS
@@ -94,26 +94,22 @@ def user_booked_ticket(
     аннулируем по актуальному значению из dict).
     """
     carrier = carrier_booking_context
+    if not carrier["issues_tickets"]:
+        pytest.skip(f"Стенд не выпускает билеты перевозчика '{carrier['name']}' — оплатный флоу недоступен")
 
     _, route_id, search_id = search_route_for_carrier(routes_client, carrier, carrier["date"])
     route_details = get_route_details(routes_client, route_id, search_id, carrier["date"])
-    assert route_details.free_bus_places, "Свободные места не найдены"
 
-    place = route_details.free_bus_places[0]
-    select_payload = {
-        "NumberPlace": place,
-        "RouteId": str(route_id),
-        "SearchId": str(search_id),
-        "Lang": LANG_RUS,
-    }
-    select_place_ok(user_tickets_client, select_payload)
-    user_place_cleanup.track(select_payload)
+    place = book_first_place(
+        user_tickets_client, route_details, route_id, search_id, user_place_cleanup
+    )
 
     booking_payload = build_booking_payload(
         route_id=route_id,
         search_id=search_id,
         place_number=place,
         tariff_id=pick_tariff_id(route_details),
+        document_id=carrier["document_id"],
     )
     _, ticket_numbers, md_order = user_booking_ok(user_tickets_client, booking_payload)
     user_place_cleanup.places_booked()
@@ -186,6 +182,8 @@ def selected_place_context(carrier_booking_context, routes_client, tickets_clien
         }).json()
     )
     route_details = route_data.Result.Route
+    if not route_details.has_seat_map:
+        pytest.skip(f"У перевозчика '{carrier['name']}' свободная рассадка — выбор места не применим")
     assert route_details.free_bus_places, "Нет свободных мест для теста"
 
     place_number = route_details.free_bus_places[0]

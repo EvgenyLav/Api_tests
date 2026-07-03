@@ -132,7 +132,8 @@ def get_route_details(routes_client, route_id, search_id, expected_date: str):
         assert str(route_details.Id) == str(route_id)
         assert route_details.City1 and route_details.City2
         assert route_details.Tariffs, "Тарифы маршрута не найдены"
-        assert route_details.FullBusPlaces, "FullBusPlaces пустой"
+        if route_details.has_seat_map:
+            assert route_details.FullBusPlaces, "FullBusPlaces пустой"
         assert route_details.departure_date == expected_date
 
     return route_details
@@ -140,6 +141,27 @@ def get_route_details(routes_client, route_id, search_id, expected_date: str):
 
 def pick_tariff_id(route_details) -> int | None:
     return next((t.Id for t in route_details.Tariffs if t.Id is not None), None)
+
+
+def book_first_place(tickets_client, route_details, route_id, search_id, cleanup, step_name: str = "Select Place") -> int:
+    """Выбирает первое свободное место и возвращает его номер.
+
+    Для маршрутов без схемы мест (свободная рассадка) selectplace не применим —
+    возвращает 0 без запроса.
+    """
+    if not route_details.has_seat_map:
+        return 0
+    assert route_details.free_bus_places, "Свободные места не найдены"
+    place = route_details.free_bus_places[0]
+    payload = {
+        "NumberPlace": place,
+        "RouteId": str(route_id),
+        "SearchId": str(search_id),
+        "Lang": LANG_RUS,
+    }
+    select_place_ok(tickets_client, payload, step_name=step_name)
+    cleanup.track(payload)
+    return place
 
 
 def select_place_ok(tickets_client, payload: dict, step_name: str = "Select Place"):

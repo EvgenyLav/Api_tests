@@ -6,6 +6,7 @@ from tests.builders.booking import build_booking_payload
 from tests.helpers import (
     annul_ticket_ok,
     assert_ok_json,
+    book_first_place,
     assert_ticket_details_match,
     attach_json,
     attach_response,
@@ -50,33 +51,29 @@ def test_user_booking_flow(
     user_place_cleanup,
 ):
     carrier = carrier_booking_context
+    if not carrier["issues_tickets"]:
+        pytest.skip(f"Стенд не выпускает билеты перевозчика '{carrier['name']}' — оплатный флоу недоступен")
     valid_booking_depart_date = carrier["date"]
 
     _, route_id, search_id = search_route_for_carrier(routes_client, carrier, valid_booking_depart_date)
 
     route_details = get_route_details(routes_client, route_id, search_id, valid_booking_depart_date)
-    assert route_details.free_bus_places, "Свободные места не найдены"
 
-    first_place = route_details.free_bus_places[0]
     tariff_id = pick_tariff_id(route_details)
-    attach_text(first_place, "first_place")
     if tariff_id is not None:
         attach_text(tariff_id, "tariff_id")
 
-    select_place_payload = {
-        "NumberPlace": first_place,
-        "RouteId": str(route_id),
-        "SearchId": str(search_id),
-        "Lang": LANG_RUS,
-    }
-    select_place_ok(user_tickets_client, select_place_payload)
-    user_place_cleanup.track(select_place_payload)
+    first_place = book_first_place(
+        user_tickets_client, route_details, route_id, search_id, user_place_cleanup
+    )
+    attach_text(first_place, "first_place")
 
     booking_payload = build_booking_payload(
         route_id=route_id,
         search_id=search_id,
         place_number=first_place,
         tariff_id=tariff_id,
+        document_id=carrier["document_id"],
     )
     _, ticket_numbers, md_order = user_booking_ok(user_tickets_client, booking_payload)
     user_place_cleanup.places_booked()
@@ -129,6 +126,51 @@ def test_user_booking_flow(
 
 
 @allure.feature("Booking API")
+@allure.story("User booking order created (без выпуска билета)")
+@pytest.mark.smoke
+@pytest.mark.booking
+@pytest.mark.parametrize(
+    "carrier_booking_context",
+    CARRIER_CONFIGS,
+    indirect=True,
+    ids=[c["name"] for c in CARRIER_CONFIGS],
+)
+def test_user_booking_order_created(
+    carrier_booking_context,
+    routes_client,
+    user_tickets_client,
+    user_place_cleanup,
+):
+    """Для перевозчиков, чьи билеты стенд не выпускает: бронь до создания заказа.
+
+    Проверяет search -> getRoute -> user/booking: заказ создан, есть OrderId и mdOrder.
+    Оплата не выполняется — неоплаченная бронь истекает на стороне стенда.
+    """
+    carrier = carrier_booking_context
+    if carrier["issues_tickets"]:
+        pytest.skip(f"Перевозчик '{carrier['name']}' покрыт полным оплатным флоу")
+
+    _, route_id, search_id = search_route_for_carrier(routes_client, carrier, carrier["date"])
+    route_details = get_route_details(routes_client, route_id, search_id, carrier["date"])
+
+    place = book_first_place(
+        user_tickets_client, route_details, route_id, search_id, user_place_cleanup
+    )
+    booking_payload = build_booking_payload(
+        route_id=route_id,
+        search_id=search_id,
+        place_number=place,
+        tariff_id=pick_tariff_id(route_details),
+        document_id=carrier["document_id"],
+    )
+    order_id, _, md_order = user_booking_ok(user_tickets_client, booking_payload)
+    user_place_cleanup.places_booked()
+
+    assert order_id, "OrderId не присвоен заказу"
+    assert md_order, "mdOrder не найден в ответе бронирования"
+
+
+@allure.feature("Booking API")
 @allure.story("User multi-ticket booking smoke flow")
 @pytest.mark.smoke
 @pytest.mark.booking
@@ -146,35 +188,41 @@ def test_user_multi_ticket_booking_flow(
     user_place_cleanup,
 ):
     carrier = carrier_booking_context
+    if not carrier["issues_tickets"]:
+        pytest.skip(f"Стенд не выпускает билеты перевозчика '{carrier['name']}' — оплатный флоу недоступен")
     valid_booking_depart_date = carrier["date"]
 
     _, route_id, search_id = search_route_for_carrier(routes_client, carrier, valid_booking_depart_date)
 
     route_details = get_route_details(routes_client, route_id, search_id, valid_booking_depart_date)
 
-    free_places = route_details.free_bus_places
-    if len(free_places) < 2:
-        pytest.skip("Недостаточно свободных мест для теста (нужно минимум 2)")
+    if route_details.has_seat_map:
+        free_places = route_details.free_bus_places
+        if len(free_places) < 2:
+            pytest.skip("Недостаточно свободных мест для теста (нужно минимум 2)")
 
-    place_1, place_2 = free_places[0], free_places[1]
+        place_1, place_2 = free_places[0], free_places[1]
+        for index, place in enumerate([place_1, place_2], start=1):
+            select_payload = {
+                "NumberPlace": place,
+                "RouteId": str(route_id),
+                "SearchId": str(search_id),
+                "Lang": LANG_RUS,
+            }
+            select_place_ok(user_tickets_client, select_payload, step_name=f"Select Place {index}")
+            user_place_cleanup.track(select_payload)
+    else:
+        place_1 = place_2 = 0
+
     tariff_id = pick_tariff_id(route_details)
     attach_text(f"{place_1}, {place_2}", "selected_places")
-
-    for index, place in enumerate([place_1, place_2], start=1):
-        select_payload = {
-            "NumberPlace": place,
-            "RouteId": str(route_id),
-            "SearchId": str(search_id),
-            "Lang": LANG_RUS,
-        }
-        select_place_ok(user_tickets_client, select_payload, step_name=f"Select Place {index}")
-        user_place_cleanup.track(select_payload)
 
     booking_payload = build_booking_payload(
         route_id=route_id,
         search_id=search_id,
         place_number=[place_1, place_2],
         tariff_id=tariff_id,
+        document_id=carrier["document_id"],
     )
     _, ticket_numbers, md_order = user_booking_ok(
         user_tickets_client, booking_payload, step_name="User Booking (2 билета)"
@@ -211,15 +259,30 @@ def test_user_multi_ticket_booking_flow(
         assert tickets_data.Result.Collections, "Список билетов пустой"
 
     with allure.step("Get Ticket Details (оба билета)"):
-        seat_to_passenger = {p["PlaceNumber"]: p for p in booking_payload["Passengers"]}
+        passengers = booking_payload["Passengers"]
         ticket_ids: dict[str, int] = {}
 
         for ticket_number in ticket_numbers:
             details = get_ticket_details_ok(user_tickets_client, ticket_number)
-            passenger = seat_to_passenger.get(details.PlaceDepart)
-            assert passenger is not None, (
-                f"Не найден пассажир для места {details.PlaceDepart} у билета {ticket_number}"
-            )
+            if route_details.has_seat_map:
+                passenger = next(
+                    (p for p in passengers if p["PlaceNumber"] == details.PlaceDepart), None
+                )
+                assert passenger is not None, (
+                    f"Не найден пассажир для места {details.PlaceDepart} у билета {ticket_number}"
+                )
+            else:
+                # свободная рассадка: места нет, сопоставляем пассажира по фамилии
+                passenger = next(
+                    (
+                        p for p in passengers
+                        if details.ClientName and p["LastName"].upper() in details.ClientName.upper()
+                    ),
+                    None,
+                )
+                assert passenger is not None, (
+                    f"Не найден пассажир для имени '{details.ClientName}' у билета {ticket_number}"
+                )
             assert_ticket_details_match(details, passenger, booking_payload, carrier, ticket_number)
             ticket_ids[ticket_number] = details.Id
 
