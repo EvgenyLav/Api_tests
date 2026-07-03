@@ -1,6 +1,8 @@
 import json
+from datetime import datetime, timedelta
 
 import allure
+import pytest
 
 from models.booking_flow import (
     CreateTicketResponse,
@@ -11,6 +13,11 @@ from models.booking_flow import (
     SelectPlaceResponse,
 )
 from models.routes_search import RoutesSearchResponse
+from models.user_booking import (
+    TicketAnnulationResponse,
+    TicketDetailsResponse,
+    UserBookingResponse,
+)
 from tests.builders.alphabank import build_status_payload, build_validation_payload
 from utils.constants import LANG_RUS
 
@@ -39,6 +46,39 @@ def assert_ok_json(response, context: str = ""):
     assert response.headers["Content-Type"].startswith("application/json"), (
         f"{prefix}ожидался application/json, получен {response.headers.get('Content-Type')}"
     )
+
+
+def get_valid_date(
+    routes_client,
+    city_departure: int,
+    city_arrival: int,
+    carrier_id: int | None = None,
+    days_ahead: int = 5,
+    exclude_dates: set[str] | None = None,
+) -> str:
+    """Ищет ближайшую дату с маршрутами (опционально — конкретного перевозчика, минуя exclude_dates)."""
+    exclude_dates = exclude_dates or set()
+    for i in range(1, days_ahead + 1):
+        date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
+        if date in exclude_dates:
+            continue
+
+        payload = {
+            "CityDeparture": city_departure,
+            "CityArrival": city_arrival,
+            "DateDeparture": date,
+        }
+
+        response = routes_client.search_routes(payload)
+        data = RoutesSearchResponse(**response.json())
+
+        if carrier_id is not None:
+            if data.Result.route_group_by_carrier(carrier_id) is not None:
+                return date
+        elif data.Result.has_routes:
+            return date
+
+    pytest.skip("Нет маршрутов на ближайшие даты")
 
 
 def search_route_for_carrier(routes_client, carrier: dict, date: str):
@@ -113,6 +153,67 @@ def select_place_ok(tickets_client, payload: dict, step_name: str = "Select Plac
         assert SelectPlaceResponse(**response.json()).Result.Success is True
 
     return response
+
+
+def user_booking_ok(user_tickets_client, booking_payload: dict, step_name: str = "User Booking"):
+    """Шаг User Booking: бронирует и возвращает (order_id, ticket_numbers, md_order)."""
+    with allure.step(step_name):
+        attach_json(booking_payload, "booking_payload")
+        booking_response = user_tickets_client.user_booking(booking_payload)
+        attach_response(booking_response, "booking_response")
+
+        assert_ok_json(booking_response, "tickets/user/booking")
+
+        booking_data = UserBookingResponse(**booking_response.json())
+        assert booking_data.Error is None
+        assert booking_data.Result is not None
+        assert booking_data.Result.result is not None
+        assert booking_data.Result.result.Data is not None
+
+        order_id = booking_data.Result.result.Data.OrderId
+        ticket_numbers = booking_data.Result.result.Data.TicketsNumber
+        assert order_id is not None
+        assert ticket_numbers is not None
+        attach_text(order_id, "order_id")
+        attach_text(ticket_numbers, "ticket_numbers")
+
+        md_order = booking_data.Result.md_order
+        assert md_order is not None, "mdOrder не найден в ответе user_booking"
+        attach_text(md_order, "md_order")
+
+    return order_id, ticket_numbers, md_order
+
+
+def get_ticket_details_ok(user_tickets_client, ticket_number: str):
+    """Запрашивает детали билета и возвращает валидированный Result."""
+    details_payload = {"Number": ticket_number, "Lang": LANG_RUS}
+    attach_json(details_payload, f"ticket_details_payload_{ticket_number}")
+    details_response = user_tickets_client.get_ticket_details(details_payload)
+    attach_response(details_response, f"ticket_details_response_{ticket_number}")
+
+    assert_ok_json(details_response, "tickets/details")
+
+    details_data = TicketDetailsResponse(**details_response.json())
+    assert details_data.Error is None
+    assert details_data.Result is not None
+    return details_data.Result
+
+
+def annul_ticket_ok(user_tickets_client, ticket_number: str, ticket_id):
+    annulation_payload = {
+        "TicketNumber": ticket_number,
+        "TicketId": ticket_id,
+        "Lang": LANG_RUS,
+    }
+    attach_json(annulation_payload, f"annulation_payload_{ticket_number}")
+    annulation_response = user_tickets_client.annulation(annulation_payload)
+    attach_response(annulation_response, f"annulation_response_{ticket_number}")
+
+    assert_ok_json(annulation_response, f"tickets/annulation (билет {ticket_number})")
+
+    annulation_data = TicketAnnulationResponse(**annulation_response.json())
+    assert annulation_data.Error is None
+    assert annulation_data.Result is True, f"Аннуляция билета {ticket_number} не выполнена"
 
 
 def assert_ticket_created(is_created_data: IsCreatedResponse, context: str = "Билет не создан"):

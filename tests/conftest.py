@@ -7,7 +7,6 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import pytest
-from datetime import datetime, timedelta
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -21,7 +20,18 @@ from config.settings import BASE_URL, ROOT_URL, USER_LOGIN, USER_PASSWORD
 from models.user_booking import TokenResponse
 from models.booking_flow import GetRouteResponse
 from models.routes_search import RoutesSearchResponse
-from tests.helpers import PlaceCleanup
+from tests.builders.booking import build_booking_payload
+from tests.helpers import (
+    PlaceCleanup,
+    get_route_details,
+    get_ticket_details_ok,
+    get_valid_date,
+    pick_tariff_id,
+    process_payment,
+    search_route_for_carrier,
+    select_place_ok,
+    user_booking_ok,
+)
 from utils.constants import MINSK, MOSCOW, CARRIER_CONFIGS, LANG_RUS
 
 
@@ -69,26 +79,69 @@ def user_place_cleanup(user_tickets_client):
     cleanup.finalize()
 
 
-def get_valid_date(routes_client, city_departure, city_arrival, carrier_id=None, days_ahead=5):
-    for i in range(1, days_ahead + 1):
-        date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
+@pytest.fixture
+def user_booked_ticket(
+    carrier_booking_context,
+    routes_client,
+    user_tickets_client,
+    alphabank_client,
+    user_place_cleanup,
+):
+    """Прекондишен: бронирует и создаёт один билет под пользователем.
 
-        payload = {
-            "CityDeparture": city_departure,
-            "CityArrival": city_arrival,
-            "DateDeparture": date,
-        }
+    Возвращает dict с ticket_number/ticket_id/booking_payload/carrier.
+    В teardown аннулирует билет best-effort (тест мог поменять номер —
+    аннулируем по актуальному значению из dict).
+    """
+    carrier = carrier_booking_context
 
-        response = routes_client.search_routes(payload)
-        data = RoutesSearchResponse(**response.json())
+    _, route_id, search_id = search_route_for_carrier(routes_client, carrier, carrier["date"])
+    route_details = get_route_details(routes_client, route_id, search_id, carrier["date"])
+    assert route_details.free_bus_places, "Свободные места не найдены"
 
-        if carrier_id is not None:
-            if data.Result.route_group_by_carrier(carrier_id) is not None:
-                return date
-        elif data.Result.has_routes:
-            return date
+    place = route_details.free_bus_places[0]
+    select_payload = {
+        "NumberPlace": place,
+        "RouteId": str(route_id),
+        "SearchId": str(search_id),
+        "Lang": LANG_RUS,
+    }
+    select_place_ok(user_tickets_client, select_payload)
+    user_place_cleanup.track(select_payload)
 
-    pytest.skip("Нет маршрутов на ближайшие даты")
+    booking_payload = build_booking_payload(
+        route_id=route_id,
+        search_id=search_id,
+        place_number=place,
+        tariff_id=pick_tariff_id(route_details),
+    )
+    _, ticket_numbers, md_order = user_booking_ok(user_tickets_client, booking_payload)
+    user_place_cleanup.places_booked()
+
+    process_payment(alphabank_client, md_order)
+
+    ticket_number = ticket_numbers[0] if isinstance(ticket_numbers, list) else ticket_numbers
+    details = get_ticket_details_ok(user_tickets_client, ticket_number)
+
+    ticket = {
+        "ticket_number": ticket_number,
+        "ticket_id": details.Id,
+        "booking_payload": booking_payload,
+        "carrier": carrier,
+        "date": carrier["date"],
+    }
+    yield ticket
+
+    try:
+        current = get_ticket_details_ok(user_tickets_client, ticket["ticket_number"])
+        if current.HasAbilityAnnulationTicket:
+            user_tickets_client.annulation({
+                "TicketNumber": ticket["ticket_number"],
+                "TicketId": current.Id,
+                "Lang": LANG_RUS,
+            })
+    except Exception:
+        pass
 
 
 @pytest.fixture

@@ -11,6 +11,8 @@ class TicketsClient(BaseClient):
     EXISTS = "/tickets/exists"
     ANNULATION = "/tickets/annulation"
     GET_BLANKS = "/tickets/getTicketBlanks"
+    CHANGE_DATE = "/tickets/changedate"
+    CHANGE_DATE_SUBMIT = "/tickets/changedate/submit"
 
     def select_place(self, payload: dict):
         return self.post(self.SELECT_PLACE, json=payload)
@@ -38,3 +40,9 @@ class TicketsClient(BaseClient):
 
     def get_ticket_blanks(self, payload: dict):
         return self.post(self.GET_BLANKS, json=payload)
+
+    def change_date(self, payload: dict):
+        return self.post(self.CHANGE_DATE, json=payload)
+
+    def change_date_submit(self, payload: dict):
+        return self.post(self.CHANGE_DATE_SUBMIT, json=payload)

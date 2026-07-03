@@ -1,55 +1,24 @@
 import allure
 import pytest
 
-from models.user_booking import (
-    UserBookingResponse,
-    TicketsListResponse,
-    TicketDetailsResponse,
-    TicketAnnulationResponse,
-)
+from models.user_booking import TicketsListResponse
 from tests.builders.booking import build_booking_payload
 from tests.helpers import (
+    annul_ticket_ok,
     assert_ok_json,
     assert_ticket_details_match,
     attach_json,
     attach_response,
     attach_text,
     get_route_details,
+    get_ticket_details_ok,
     pick_tariff_id,
     process_payment,
     search_route_for_carrier,
     select_place_ok,
+    user_booking_ok,
 )
 from utils.constants import CARRIER_CONFIGS, LANG_RUS
-
-
-def _do_user_booking(user_tickets_client, booking_payload: dict, step_name: str = "User Booking"):
-    """Шаг User Booking: бронирует и возвращает (order_id, ticket_numbers, md_order)."""
-    with allure.step(step_name):
-        attach_json(booking_payload, "booking_payload")
-        booking_response = user_tickets_client.user_booking(booking_payload)
-        attach_response(booking_response, "booking_response")
-
-        assert_ok_json(booking_response, "tickets/user/booking")
-
-        booking_data = UserBookingResponse(**booking_response.json())
-        assert booking_data.Error is None
-        assert booking_data.Result is not None
-        assert booking_data.Result.result is not None
-        assert booking_data.Result.result.Data is not None
-
-        order_id = booking_data.Result.result.Data.OrderId
-        ticket_numbers = booking_data.Result.result.Data.TicketsNumber
-        assert order_id is not None
-        assert ticket_numbers is not None
-        attach_text(order_id, "order_id")
-        attach_text(ticket_numbers, "ticket_numbers")
-
-        md_order = booking_data.Result.md_order
-        assert md_order is not None, "mdOrder не найден в ответе user_booking"
-        attach_text(md_order, "md_order")
-
-    return order_id, ticket_numbers, md_order
 
 
 def _assert_tickets_exist(user_tickets_client, ticket_numbers: list):
@@ -61,38 +30,6 @@ def _assert_tickets_exist(user_tickets_client, ticket_numbers: list):
 
             assert_ok_json(exists_response, f"tickets/exists (билет {tn})")
             assert exists_response.json() is True, f"Билет {tn} не найден в системе"
-
-
-def _get_ticket_details(user_tickets_client, ticket_number: str):
-    """Запрашивает детали билета и возвращает валидированный Result."""
-    details_payload = {"Number": ticket_number, "Lang": LANG_RUS}
-    attach_json(details_payload, f"ticket_details_payload_{ticket_number}")
-    details_response = user_tickets_client.get_ticket_details(details_payload)
-    attach_response(details_response, f"ticket_details_response_{ticket_number}")
-
-    assert_ok_json(details_response, "tickets/details")
-
-    details_data = TicketDetailsResponse(**details_response.json())
-    assert details_data.Error is None
-    assert details_data.Result is not None
-    return details_data.Result
-
-
-def _annul_ticket(user_tickets_client, ticket_number: str, ticket_id):
-    annulation_payload = {
-        "TicketNumber": ticket_number,
-        "TicketId": ticket_id,
-        "Lang": LANG_RUS,
-    }
-    attach_json(annulation_payload, f"annulation_payload_{ticket_number}")
-    annulation_response = user_tickets_client.annulation(annulation_payload)
-    attach_response(annulation_response, f"annulation_response_{ticket_number}")
-
-    assert_ok_json(annulation_response, f"tickets/annulation (билет {ticket_number})")
-
-    annulation_data = TicketAnnulationResponse(**annulation_response.json())
-    assert annulation_data.Error is None
-    assert annulation_data.Result is True, f"Аннуляция билета {ticket_number} не выполнена"
 
 
 @allure.feature("Booking API")
@@ -141,7 +78,7 @@ def test_user_booking_flow(
         place_number=first_place,
         tariff_id=tariff_id,
     )
-    _, ticket_numbers, md_order = _do_user_booking(user_tickets_client, booking_payload)
+    _, ticket_numbers, md_order = user_booking_ok(user_tickets_client, booking_payload)
     user_place_cleanup.places_booked()
 
     ticket_number_list = ticket_numbers if isinstance(ticket_numbers, list) else [ticket_numbers]
@@ -183,12 +120,12 @@ def test_user_booking_flow(
         attach_text(first_ticket.PdfUrl, "first_ticket_pdf_url")
 
     with allure.step("Get Ticket Details"):
-        details = _get_ticket_details(user_tickets_client, ticket_number_list[0])
+        details = get_ticket_details_ok(user_tickets_client, ticket_number_list[0])
         passenger = booking_payload["Passengers"][0]
         assert_ticket_details_match(details, passenger, booking_payload, carrier, ticket_number_list[0])
 
     with allure.step("Annulation"):
-        _annul_ticket(user_tickets_client, details.TicketNumber, details.Id)
+        annul_ticket_ok(user_tickets_client, details.TicketNumber, details.Id)
 
 
 @allure.feature("Booking API")
@@ -239,7 +176,7 @@ def test_user_multi_ticket_booking_flow(
         place_number=[place_1, place_2],
         tariff_id=tariff_id,
     )
-    _, ticket_numbers, md_order = _do_user_booking(
+    _, ticket_numbers, md_order = user_booking_ok(
         user_tickets_client, booking_payload, step_name="User Booking (2 билета)"
     )
     user_place_cleanup.places_booked()
@@ -278,7 +215,7 @@ def test_user_multi_ticket_booking_flow(
         ticket_ids: dict[str, int] = {}
 
         for ticket_number in ticket_numbers:
-            details = _get_ticket_details(user_tickets_client, ticket_number)
+            details = get_ticket_details_ok(user_tickets_client, ticket_number)
             passenger = seat_to_passenger.get(details.PlaceDepart)
             assert passenger is not None, (
                 f"Не найден пассажир для места {details.PlaceDepart} у билета {ticket_number}"
@@ -288,4 +225,4 @@ def test_user_multi_ticket_booking_flow(
 
     with allure.step("Annulation (оба билета)"):
         for ticket_number in ticket_numbers:
-            _annul_ticket(user_tickets_client, ticket_number, ticket_ids[ticket_number])
+            annul_ticket_ok(user_tickets_client, ticket_number, ticket_ids[ticket_number])

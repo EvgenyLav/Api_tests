@@ -92,32 +92,32 @@ class RouteDepartDetails(BaseModel):
 
 class TicketDetailsResult(BaseModel):
     model_config = ConfigDict(extra="allow")
-    TicketNumber: str | None = None
+    TicketNumber: str
     ClientName: str | None = None
     PhoneNumber: str | None = None
     PhoneNumberTwo: str | None = None
     Email: str | None = None
-    DateDepart: str | None = None
+    DateDepart: str
     PriceTicket: float | None = None
     CurrencyName: str | None = None
     CurrencyId: int | None = None
     PdfUrl: str | None = None
-    Id: int | None = None
+    Id: int
     CityDepart: str | None = None
     CityArrive: str | None = None
     CityDepartId: int | None = None
     CityArriveId: int | None = None
     TarifId: int | None = None
     TarifName: str | None = None
-    PlaceDepart: int | None = None
+    PlaceDepart: int
     PlaceReturn: int | None = None
     ClientCitizenship: str | None = None
     ClientPasport: str | None = None
     ClientDateOfBirthDay: str | None = None
-    Condition: str | None = None
+    Condition: str
     RouteDepart: RouteDepartDetails | None = None
-    HasAbilityChangeDate: bool | None = None
-    HasAbilityAnnulationTicket: bool | None = None
+    HasAbilityChangeDate: bool
+    HasAbilityAnnulationTicket: bool
 
 
 class TicketDetailsResponse(BaseModel):
@@ -136,5 +136,30 @@ class TicketAnnulationResponse(BaseModel):
 
 
 class TicketBlanksResponse(BaseModel):
+    Result: Any = None
+    Error: ApiError | None = None
+
+
+class ChangeDateData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    Refund: float | None = None
+    ExtraPay: float | None = None
+    OrderId: str | None = None
+
+
+class ChangeDateResult(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    PaymentUrl: str | None = None
+    ExternalUrl: str | None = None
+    Data: ChangeDateData | None = None
+
+
+class ChangeDateResponse(BaseModel):
+    Result: ChangeDateResult | None = None
+    Error: ApiError | None = None
+
+
+class ChangeDateSubmitResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
     Result: Any = None
     Error: ApiError | None = None
